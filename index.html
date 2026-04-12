@@ -196,6 +196,56 @@
   .container { position: relative; z-index: 1; }
   .error-msg { color: #f87171; font-size: 0.82rem; margin-top: 6px; }
   .help-text { font-size: 0.75rem; opacity: 0.4; margin-top: 4px; }
+
+  /* Precipitation Phase Builder */
+  .phases-field { flex: 2; min-width: 260px; }
+  .phases-builder { margin-top: 6px; }
+  .phase-row {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 6px;
+    padding: 6px 8px; background: rgba(0,0,0,0.15); border-radius: 8px;
+  }
+  .phase-row select {
+    padding: 7px 8px; border-radius: 6px; background: rgba(0,0,0,0.3); color: #fff;
+    border: 1px solid rgba(255,255,255,0.2); font-size: 0.82rem; cursor: pointer; outline: none;
+    min-width: 130px;
+  }
+  .phase-row select:focus { border-color: #5b9cf5; }
+  .phase-row select option { background: #1e293b; color: #fff; }
+  .phase-row input[type="text"] { width: 90px; padding: 7px 10px; font-size: 0.85rem; }
+  .phase-row .phase-unit { font-size: 0.75rem; opacity: 0.5; white-space: nowrap; }
+  .phase-order-num { font-size: 0.7rem; opacity: 0.4; min-width: 18px; text-align: center; font-weight: 600; }
+  .phase-arrows { display: flex; flex-direction: column; gap: 1px; }
+  .phase-arrows button {
+    background: none; border: none; color: rgba(255,255,255,0.4); font-size: 0.7rem;
+    padding: 0 4px; cursor: pointer; line-height: 1;
+  }
+  .phase-arrows button:hover { color: #5b9cf5; }
+  .phase-remove { background: none; border: none; color: #f87171; font-size: 0.95rem; padding: 2px 6px; opacity: 0.5; cursor: pointer; }
+  .phase-remove:hover { opacity: 1; }
+  .btn-add-phase {
+    background: rgba(91,156,245,0.15); border: 1px dashed rgba(91,156,245,0.3);
+    color: #93c5fd; padding: 6px 14px; border-radius: 6px; font-size: 0.8rem;
+    cursor: pointer; margin-top: 4px;
+  }
+  .btn-add-phase:hover { background: rgba(91,156,245,0.25); }
+  .phases-empty { font-size: 0.8rem; opacity: 0.35; padding: 8px 0; }
+
+  /* Timeline colors per precip type */
+  .tl-snow { color: #93c5fd; }
+  .tl-ice { color: #c084fc; }
+  .tl-sleet { color: #fbbf24; }
+  .tl-rain { color: #6ee7b7; }
+  .tl-phase-row { margin-bottom: 2px; }
+
+  /* Precip breakdown in city list & table */
+  .precip-tag { display: inline-block; font-size: 0.78rem; margin-right: 4px; }
+  .precip-breakdown { font-size: 0.78rem; line-height: 1.5; }
+
+  /* Wind input row */
+  .wind-row { display: flex; gap: 12px; align-items: flex-end; margin-top: 10px; flex-wrap: wrap; }
+  .wind-field { display: flex; align-items: flex-end; gap: 6px; }
+  .wind-field input { width: 80px; }
+  .wind-field .unit { font-size: 0.82rem; opacity: 0.6; padding-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -219,9 +269,12 @@
         <div class="autocomplete-list" id="acList"></div>
         <p class="help-text">Search 500+ cities worldwide &mdash; population, region, and snow resilience included</p>
       </div>
-      <div class="snow-field">
-        <label for="snowInput">Snowfall (inches)</label>
-        <input type="text" id="snowInput" placeholder='e.g. 6.3 or Trace'>
+      <div class="phases-field">
+        <label>Precipitation Phases <span style="opacity:0.5;font-size:0.75rem">(in order of occurrence)</span></label>
+        <div class="phases-builder" id="phaseBuilder">
+          <div class="phases-empty" id="phasesEmpty">Click "Add Phase" to define precipitation &darr;</div>
+        </div>
+        <button type="button" class="btn-add-phase" id="addPhaseBtn">+ Add Phase</button>
       </div>
     </div>
     <div class="cold-row">
@@ -232,6 +285,22 @@
           <input type="number" id="coldInput" placeholder="e.g. -5">
         </div>
         <span class="unit">&deg;F</span>
+      </div>
+    </div>
+    <div class="wind-row">
+      <div class="wind-field">
+        <div>
+          <label for="windInput">Wind speed</label>
+          <input type="number" id="windInput" placeholder="e.g. 25" min="0">
+        </div>
+        <span class="unit">mph</span>
+      </div>
+      <div class="wind-field">
+        <div>
+          <label for="gustInput">Gust speed</label>
+          <input type="number" id="gustInput" placeholder="e.g. 45" min="0">
+        </div>
+        <span class="unit">mph</span>
       </div>
     </div>
     <div id="inputError" class="error-msg"></div>
@@ -522,6 +591,76 @@ function getResilienceLabel(annualSnow) {
   return                         { label:'Zero',        css:'none',      icon:'\u274c\u274c' };
 }
 
+/* ======================================================================
+   PRECIPITATION TYPE SYSTEM
+   Supports snow, ice (freezing rain), sleet, and rain with
+   order-dependent impact modifiers.
+   ====================================================================== */
+const PRECIP_TYPES = ['snow', 'ice', 'sleet', 'rain'];
+const PRECIP_LABELS = { snow: 'Snow', ice: 'Ice / Freezing Rain', sleet: 'Sleet', rain: 'Rain' };
+const PRECIP_ICONS  = { snow: '\u2744\uFE0F', ice: '\u{1F9CA}', sleet: '\u26C8\uFE0F', rain: '\u{1F327}\uFE0F' };
+const PRECIP_COLORS = { snow: '#93c5fd', ice: '#c084fc', sleet: '#fbbf24', rain: '#6ee7b7' };
+
+// Impact multiplier per inch relative to snow
+const PRECIP_MULTIPLIERS = { snow: 1.0, ice: 8.0, sleet: 2.5, rain: 0.0 };
+
+// Order-dependent modifiers: how adjacent phases interact
+const SEQUENCE_MODIFIERS = [
+  // Rain after wintry precip melts it — reduces preceding phase impact
+  { prev: ['snow','ice','sleet'], next: 'rain',  target: 'prev', factor: 0.4 },
+  // Wintry precip after rain — wet surfaces refreeze, amplifies
+  { prev: 'rain', next: ['snow','ice','sleet'],  target: 'next', factor: 1.3 },
+  // Ice on top of snow pack is worse
+  { prev: 'snow', next: 'ice',                   target: 'next', factor: 1.2 },
+  // Snow on slippery ice base
+  { prev: 'ice',  next: 'snow',                  target: 'next', factor: 1.1 },
+];
+
+function computeDerivedPrecip(phases) {
+  if (!phases || !phases.length) return { snow: 0, snowEquivalent: 0, phaseImpacts: [] };
+
+  // Step 1: Raw weighted impact per phase
+  const phaseImpacts = phases.map(p => ({
+    type: p.type,
+    amount: p.amount,
+    rawImpact: p.amount * PRECIP_MULTIPLIERS[p.type],
+    modifiers: []
+  }));
+
+  // Step 2: Apply sequence modifiers based on phase order
+  for (let i = 0; i < phaseImpacts.length; i++) {
+    for (let j = i + 1; j < phaseImpacts.length; j++) {
+      // Only adjacent or near-adjacent phases interact
+      if (j - i > 1) break;
+      const prev = phaseImpacts[i];
+      const curr = phaseImpacts[j];
+      for (const mod of SEQUENCE_MODIFIERS) {
+        const prevMatch = Array.isArray(mod.prev) ? mod.prev.includes(prev.type) : mod.prev === prev.type;
+        const nextMatch = Array.isArray(mod.next) ? mod.next.includes(curr.type) : mod.next === curr.type;
+        if (prevMatch && nextMatch) {
+          if (mod.target === 'prev') {
+            prev.rawImpact *= mod.factor;
+            prev.modifiers.push(mod.factor < 1 ? 'reduced by following rain' : 'amplified');
+          } else {
+            curr.rawImpact *= mod.factor;
+            curr.modifiers.push(mod.factor > 1 ? 'amplified by preceding ' + prev.type : 'reduced');
+          }
+        }
+      }
+    }
+  }
+
+  // Step 3: Sum totals
+  const snowEquivalent = phaseImpacts.reduce((s, p) => s + p.rawImpact, 0);
+  const frozenTotal = phases.filter(p => p.type !== 'rain').reduce((s, p) => s + p.amount, 0);
+
+  return {
+    snow: Math.round(frozenTotal * 10) / 10,
+    snowEquivalent: Math.round(snowEquivalent * 100) / 100,
+    phaseImpacts
+  };
+}
+
 /* ---- Impact with resilience (13 tiers) ---- */
 function getColdMultiplier(coldTemp) {
   if (coldTemp === null || coldTemp === undefined) return 1.0;
@@ -533,25 +672,70 @@ function getColdMultiplier(coldTemp) {
   return 1.1;
 }
 
-function getImpact(snow, annualSnow, recordCold, coldTemp) {
+/* ---- Wind Impact System ----
+   Wind amplifies precipitation impact through drifting, reduced visibility,
+   and structural damage. Gusts cause additional spikes of damage.
+   Sustained wind (mph) → multiplier; gust adds a bonus on top.
+   Based on NWS Blizzard criteria (35+ mph) and Wind Advisory thresholds. */
+function getWindMultiplier(windSpeed, gustSpeed) {
+  if (!windSpeed && !gustSpeed) return 1.0;
+  const ws = windSpeed || 0;
+  const gs = gustSpeed || ws;
+
+  // Sustained wind multiplier
+  let windMult = 1.0;
+  if (ws >= 60)      windMult = 2.0;   // Hurricane-force: extreme drifting, structural damage
+  else if (ws >= 45) windMult = 1.7;   // Violent: whiteout, impossible travel
+  else if (ws >= 35) windMult = 1.5;   // Blizzard criteria: near-zero visibility with snow
+  else if (ws >= 25) windMult = 1.3;   // High wind: significant drifting
+  else if (ws >= 15) windMult = 1.15;  // Moderate: noticeable drifting
+  else if (ws >= 10) windMult = 1.05;  // Light: minor drifting
+  // Below 10 mph: negligible wind effect
+
+  // Gust bonus: gusts cause momentary spikes that damage trees, power lines
+  // Only counts the excess above sustained speed
+  const gustExcess = Math.max(0, gs - ws);
+  let gustBonus = 0;
+  if (gustExcess >= 30)      gustBonus = 0.3;  // Extreme gusts
+  else if (gustExcess >= 20) gustBonus = 0.2;  // Very strong gusts
+  else if (gustExcess >= 15) gustBonus = 0.12; // Strong gusts
+  else if (gustExcess >= 10) gustBonus = 0.07; // Moderate gusts
+  else if (gustExcess >= 5)  gustBonus = 0.03; // Light gusts
+
+  return windMult + gustBonus;
+}
+
+function getWindLabel(windSpeed, gustSpeed) {
+  const ws = windSpeed || 0;
+  const gs = gustSpeed || 0;
+  if (ws >= 60)      return { label: 'Hurricane-Force', icon: '\u{1F32A}\uFE0F\u{1F32A}\uFE0F' };
+  if (ws >= 45)      return { label: 'Violent',         icon: '\u{1F32A}\uFE0F' };
+  if (ws >= 35)      return { label: 'Blizzard-Force',  icon: '\u{1F4A8}\u{1F4A8}' };
+  if (ws >= 25)      return { label: 'High Wind',       icon: '\u{1F4A8}' };
+  if (ws >= 15)      return { label: 'Breezy',          icon: '\u{1F343}' };
+  if (ws >= 10)      return { label: 'Light Wind',      icon: '~' };
+  if (gs >= 30)      return { label: 'Gusty',           icon: '\u{1F4A8}' };
+  return                     { label: 'Calm',            icon: '' };
+}
+
+function getImpact(snow, annualSnow, recordCold, coldTemp, snowEquivalent, windSpeed, gustSpeed) {
   const factor = getResilienceFactor(annualSnow);
   const coldMult = recordCold ? getColdMultiplier(coldTemp) : 1.0;
+  const windMult = getWindMultiplier(windSpeed, gustSpeed);
+  // Use snowEquivalent (precip-type-weighted) when available, otherwise raw snow
+  const effectiveSnow = (snowEquivalent !== undefined && snowEquivalent !== null) ? snowEquivalent : snow;
 
   // Cold-only baseline: extreme cold alone causes impact, especially in
   // low-resilience regions (Florida, Caribbean, Deep South) where infrastructure
   // and population are unprepared for freezing temperatures.
   let coldBaseline = 0;
   if (recordCold && coldTemp !== null && coldTemp !== undefined) {
-    // Raw cold severity: how far below freezing (32°F)
     const degBelow = Math.max(0, 32 - coldTemp);
-    // Scale: 0°F → ~3.2 raw, -10°F → ~4.2, -20°F → ~5.2, 20°F → ~1.2
     const rawCold = degBelow * 0.1;
-    // Resilience inversion: low-resilience areas are hit much harder by cold alone
-    // factor < 1 means low resilience → divide by factor to amplify
     coldBaseline = rawCold / factor;
   }
 
-  const snowEffective = (snow / factor) * coldMult;
+  const snowEffective = (effectiveSnow / factor) * coldMult * windMult;
   const effective = Math.max(snowEffective, coldBaseline);  // Whichever is worse
 
   let result;
@@ -572,6 +756,7 @@ function getImpact(snow, annualSnow, recordCold, coldTemp) {
   result.effective = effective;
   result.factor = factor;
   result.coldMult = coldMult;
+  result.windMult = windMult;
   result.coldDriven = coldBaseline > 0 && coldBaseline >= snowEffective;
   return result;
 }
@@ -579,13 +764,18 @@ function getImpact(snow, annualSnow, recordCold, coldTemp) {
 /* ====================================================================== */
 const cities = [];
 let acIndex = -1;
+let inputPhases = []; // current phase rows being edited
 
 const cityInput = document.getElementById('cityInput');
-const snowInput = document.getElementById('snowInput');
 const coldCheck = document.getElementById('coldCheck');
 const coldField = document.getElementById('coldField');
 const coldInput = document.getElementById('coldInput');
+const windInput = document.getElementById('windInput');
+const gustInput = document.getElementById('gustInput');
 const addBtn = document.getElementById('addBtn');
+const phaseBuilder = document.getElementById('phaseBuilder');
+const phasesEmpty = document.getElementById('phasesEmpty');
+const addPhaseBtn = document.getElementById('addPhaseBtn');
 
 coldCheck.addEventListener('change', () => {
   coldField.classList.toggle('visible', coldCheck.checked);
@@ -607,6 +797,90 @@ function parseSnow(val) {
   if (isNaN(n) || n < 0) return null;
   return Math.round(n * 10) / 10;
 }
+
+/* ---- Phase Builder ---- */
+function renderPhaseRows() {
+  // Remove existing phase rows (keep the empty message element)
+  phaseBuilder.querySelectorAll('.phase-row').forEach(el => el.remove());
+  phasesEmpty.style.display = inputPhases.length ? 'none' : 'block';
+  inputPhases.forEach((phase, i) => {
+    const row = document.createElement('div');
+    row.className = 'phase-row';
+    row.innerHTML = `
+      <span class="phase-order-num">${i + 1}</span>
+      <select data-idx="${i}" class="phase-type-sel">
+        ${PRECIP_TYPES.map(t => `<option value="${t}" ${t===phase.type?'selected':''}>${PRECIP_ICONS[t]} ${PRECIP_LABELS[t]}</option>`).join('')}
+      </select>
+      <input type="text" class="phase-amt-input" data-idx="${i}" value="${phase.amountStr || ''}" placeholder="e.g. 4.0 or Trace">
+      <span class="phase-unit">inches</span>
+      <div class="phase-arrows">
+        <button type="button" data-dir="up" data-idx="${i}" title="Move up">\u25B2</button>
+        <button type="button" data-dir="down" data-idx="${i}" title="Move down">\u25BC</button>
+      </div>
+      <button type="button" class="phase-remove" data-idx="${i}" title="Remove">&times;</button>
+    `;
+    phaseBuilder.appendChild(row);
+  });
+}
+
+function addPhaseRow(type, amountStr) {
+  inputPhases.push({ type: type || 'snow', amountStr: amountStr || '' });
+  renderPhaseRows();
+  // Focus the new amount input
+  const inputs = phaseBuilder.querySelectorAll('.phase-amt-input');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+
+function removePhaseRow(idx) {
+  inputPhases.splice(idx, 1);
+  renderPhaseRows();
+}
+
+function movePhaseRow(idx, dir) {
+  const newIdx = dir === 'up' ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= inputPhases.length) return;
+  // Save current input values before swap
+  syncPhaseInputs();
+  [inputPhases[idx], inputPhases[newIdx]] = [inputPhases[newIdx], inputPhases[idx]];
+  renderPhaseRows();
+}
+
+function syncPhaseInputs() {
+  phaseBuilder.querySelectorAll('.phase-type-sel').forEach(sel => {
+    const idx = parseInt(sel.dataset.idx);
+    if (inputPhases[idx]) inputPhases[idx].type = sel.value;
+  });
+  phaseBuilder.querySelectorAll('.phase-amt-input').forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    if (inputPhases[idx]) inputPhases[idx].amountStr = inp.value;
+  });
+}
+
+function getPhases() {
+  syncPhaseInputs();
+  if (!inputPhases.length) return null;
+  const result = [];
+  for (const p of inputPhases) {
+    const amount = parseSnow(p.amountStr);
+    if (amount === null) return null; // invalid
+    result.push({ type: p.type, amount });
+  }
+  return result;
+}
+
+function clearPhaseBuilder() {
+  inputPhases = [];
+  renderPhaseRows();
+}
+
+// Event delegation for phase builder
+phaseBuilder.addEventListener('click', e => {
+  const rmBtn = e.target.closest('.phase-remove');
+  if (rmBtn) { removePhaseRow(parseInt(rmBtn.dataset.idx)); return; }
+  const arrBtn = e.target.closest('.phase-arrows button');
+  if (arrBtn) { movePhaseRow(parseInt(arrBtn.dataset.idx), arrBtn.dataset.dir); return; }
+});
+addPhaseBtn.addEventListener('click', () => addPhaseRow());
 function formatSnow(inches) { return inches === 0.05 ? 'Trace' : inches.toFixed(1) + '\u2033'; }
 function formatPop(k) { return k >= 1000 ? (k/1000).toFixed(1)+'M' : Math.round(k)+'K'; }
 function regionName(code) { return RSI_REGIONS[code] ? RSI_REGIONS[code].name : null; }
@@ -635,19 +909,20 @@ acList.addEventListener('click', e => {
   if (!item) return;
   cityInput.value = item.dataset.name;
   acList.classList.remove('open');
-  snowInput.focus();
+  // Focus phase builder — add a snow phase if empty
+  if (!inputPhases.length) addPhaseRow();
 });
 
 cityInput.addEventListener('input', showAC);
 cityInput.addEventListener('keydown', e => {
   const items = acList.querySelectorAll('.ac-item');
   if (!acList.classList.contains('open') || !items.length) {
-    if (e.key === 'Enter') { snowInput.focus(); e.preventDefault(); }
+    if (e.key === 'Enter') { if (!inputPhases.length) addPhaseRow(); e.preventDefault(); }
     return;
   }
   if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = Math.min(acIndex+1, items.length-1); highlightAC(items); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = Math.max(acIndex-1, 0); highlightAC(items); }
-  else if (e.key === 'Enter') { e.preventDefault(); if (acIndex >= 0) { cityInput.value = items[acIndex].dataset.name; acList.classList.remove('open'); snowInput.focus(); } else snowInput.focus(); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (acIndex >= 0) { cityInput.value = items[acIndex].dataset.name; acList.classList.remove('open'); if (!inputPhases.length) addPhaseRow(); } else { if (!inputPhases.length) addPhaseRow(); } }
   else if (e.key === 'Escape') acList.classList.remove('open');
 });
 document.addEventListener('click', e => { if (!e.target.closest('.city-field')) acList.classList.remove('open'); });
@@ -660,19 +935,34 @@ function addCity() {
   inputError.textContent = '';
   const name = cityInput.value.trim();
   if (!name) { inputError.textContent = 'Please enter a city name.'; return; }
-  const snow = parseSnow(snowInput.value);
-  if (snow === null) { inputError.textContent = 'Enter a valid snowfall amount (number or "Trace").'; return; }
+  const phases = getPhases();
+  if (!phases) { inputError.textContent = 'Add at least one precipitation phase with a valid amount (number or "Trace").'; return; }
+  if (!phases.length) { inputError.textContent = 'Add at least one precipitation phase.'; return; }
   const db = lookupCity(name);
   const recordCold = coldCheck.checked;
   const coldTemp = recordCold ? parseFloat(coldInput.value) : null;
   if (recordCold && isNaN(coldTemp)) { inputError.textContent = 'Enter a valid temperature for record cold.'; return; }
-  cities.push({ name, snow, pop: db?db.pop:null, region: db?db.r:null, annualSnow: db?db.snow:null, recordCold, coldTemp });
-  cityInput.value = ''; snowInput.value = ''; coldCheck.checked = false; coldField.classList.remove('visible'); coldInput.value = ''; cityInput.focus();
+  const windSpeed = windInput.value ? parseFloat(windInput.value) : null;
+  const gustSpeedVal = gustInput.value ? parseFloat(gustInput.value) : null;
+  if (windSpeed !== null && isNaN(windSpeed)) { inputError.textContent = 'Enter a valid wind speed.'; return; }
+  if (gustSpeedVal !== null && isNaN(gustSpeedVal)) { inputError.textContent = 'Enter a valid gust speed.'; return; }
+  const derived = computeDerivedPrecip(phases);
+  cities.push({
+    name, phases, snow: derived.snow, snowEquivalent: derived.snowEquivalent,
+    pop: db?db.pop:null, region: db?db.r:null, annualSnow: db?db.snow:null, recordCold, coldTemp,
+    windSpeed, gustSpeed: gustSpeedVal
+  });
+  cityInput.value = ''; clearPhaseBuilder(); coldCheck.checked = false; coldField.classList.remove('visible'); coldInput.value = ''; windInput.value = ''; gustInput.value = ''; cityInput.focus();
   acList.classList.remove('open');
   renderCityList();
 }
 
 function removeCity(i) { cities.splice(i,1); renderCityList(); if (!cities.length) profileEl.classList.remove('visible'); }
+
+function formatPhasesSummary(phases) {
+  if (!phases || !phases.length) return '';
+  return phases.map(p => `<span class="precip-tag" style="color:${PRECIP_COLORS[p.type]}">${PRECIP_ICONS[p.type]} ${formatSnow(p.amount)}</span>`).join(' \u2192 ');
+}
 
 function renderCityList() {
   generateBtn.disabled = !cities.length;
@@ -681,14 +971,16 @@ function renderCityList() {
     const rn = regionName(c.region);
     const meta = [rn||'Non-RSI', `${res.icon} ${res.label}`].join(' | ');
     const coldTag = c.recordCold ? ` <span style="color:#93c5fd;font-size:0.8rem">\u{1F976} ${c.coldTemp}\u00b0F</span>` : '';
+    const windTag = c.windSpeed ? ` <span style="color:#a5b4fc;font-size:0.8rem">\u{1F4A8} ${c.windSpeed}${c.gustSpeed ? '/G'+c.gustSpeed : ''} mph</span>` : '';
+    const phaseSummary = formatPhasesSummary(c.phases);
     return `<div class="city-item">
-      <span>${esc(c.name)} &mdash; <span class="amount">${formatSnow(c.snow)}</span>${coldTag} <span class="city-meta">${meta}</span></span>
+      <span>${esc(c.name)} &mdash; ${phaseSummary}${coldTag}${windTag} <span class="city-meta">${meta}</span></span>
       <button class="btn-remove" onclick="removeCity(${i})">&times;</button>
     </div>`;
   }).join('');
 }
 
-function clearAll() { cities.length=0; renderCityList(); profileEl.classList.remove('visible'); }
+function clearAll() { cities.length=0; clearPhaseBuilder(); windInput.value=''; gustInput.value=''; renderCityList(); profileEl.classList.remove('visible'); }
 
 /* ---- RSI Calculation ---- */
 const MAX_AREA_FACTOR = 6; // Cap area at each threshold to prevent runaway RSI
@@ -752,13 +1044,24 @@ function generateProfile() {
 
   const sorted = [...cities].sort((a,b) => b.snow - a.snow);
   const maxSnow = sorted[0].snow;
+  const maxSnowEquiv = Math.max(...sorted.map(c => c.snowEquivalent || c.snow));
   const avgSnow = cities.reduce((s,c) => s+c.snow, 0) / cities.length;
-  const storm = getStormClass(maxSnow);
+  const storm = getStormClass(maxSnowEquiv);
   const coldCities = cities.filter(c => c.recordCold);
   const coldestTemp = coldCities.length ? Math.min(...coldCities.map(c => c.coldTemp)) : null;
   const stormName = document.getElementById('stormName').value.trim();
   const rsiResult = calculateRSI();
   const rsiCat = getRSICategory(rsiResult.totalRSI);
+
+  // Check if any city has mixed precip
+  const hasMixedPrecip = cities.some(c => c.phases && c.phases.length > 1);
+  const hasWind = cities.some(c => c.windSpeed);
+  const maxWind = hasWind ? Math.max(...cities.filter(c=>c.windSpeed).map(c=>c.windSpeed)) : 0;
+  const maxGust = cities.some(c => c.gustSpeed) ? Math.max(...cities.filter(c=>c.gustSpeed).map(c=>c.gustSpeed)) : 0;
+  const hasIce = cities.some(c => c.phases && c.phases.some(p => p.type === 'ice'));
+  const hasRain = cities.some(c => c.phases && c.phases.some(p => p.type === 'rain'));
+  const hasSleet = cities.some(c => c.phases && c.phases.some(p => p.type === 'sleet'));
+  const totalIce = cities.reduce((s,c) => s + (c.phases ? c.phases.filter(p=>p.type==='ice').reduce((a,p)=>a+p.amount,0) : 0), 0);
 
   // Storm window stats
   const allTimelines = cities.filter(c => c.timeline);
@@ -769,10 +1072,23 @@ function generateProfile() {
   const nameHTML = stormName ? `<div class="storm-name-display">${esc(stormName)}</div>` : '';
 
   const rows = sorted.map(c => {
-    const imp = getImpact(c.snow, c.annualSnow, c.recordCold, c.coldTemp);
+    const imp = getImpact(c.snow, c.annualSnow, c.recordCold, c.coldTemp, c.snowEquivalent, c.windSpeed, c.gustSpeed);
     const res = getResilienceLabel(c.annualSnow);
     const rn = regionName(c.region);
     const locTag = rn ? `<span style="opacity:0.35;font-size:0.7rem;margin-left:3px">${rn}</span>` : '';
+
+    // Precip column — show phase breakdown
+    let precipCell;
+    if (c.phases && c.phases.length > 1) {
+      const lines = c.phases.map(p =>
+        `<div style="color:${PRECIP_COLORS[p.type]}">${PRECIP_ICONS[p.type]} ${formatSnow(p.amount)} ${PRECIP_LABELS[p.type].split('/')[0].trim()}</div>`
+      ).join('');
+      precipCell = `<td class="precip-breakdown">${lines}</td>`;
+    } else {
+      const p = c.phases && c.phases[0];
+      const icon = p ? PRECIP_ICONS[p.type] : '\u2744\uFE0F';
+      precipCell = `<td style="font-weight:600">${icon} ${formatSnow(c.snow)}</td>`;
+    }
 
     // Build detail text
     let detail = imp.desc;
@@ -783,6 +1099,10 @@ function generateProfile() {
       else if (imp.factor >= 1.9) detail += ` <em style="opacity:0.6">(Greatly reduced \u2014 elite snow-handling infrastructure)</em>`;
       else if (imp.factor >= 1.4) detail += ` <em style="opacity:0.6">(Impact reduced \u2014 this area handles snow well)</em>`;
     }
+    // Show snow-equivalent note for mixed precip
+    if (c.phases && c.phases.length > 1 && c.snowEquivalent !== c.snow) {
+      detail += ` <em style="opacity:0.6">(Snow-equivalent impact: ${c.snowEquivalent.toFixed(1)}\u2033)</em>`;
+    }
     if (c.recordCold) {
       if (imp.coldDriven) {
         detail += ` <em style="color:#93c5fd">\u{1F976} Impact driven by record cold of ${c.coldTemp}\u00b0F \u2014 extreme freeze in an unprepared area</em>`;
@@ -790,20 +1110,27 @@ function generateProfile() {
         detail += ` <em style="color:#93c5fd">\u{1F976} Record cold of ${c.coldTemp}\u00b0F amplifies impact (\u00d7${imp.coldMult.toFixed(2)})</em>`;
       }
     }
+    if (c.windSpeed && imp.windMult > 1.0) {
+      const wl = getWindLabel(c.windSpeed, c.gustSpeed);
+      let windDesc = `\u{1F4A8} ${wl.label} winds of ${c.windSpeed} mph`;
+      if (c.gustSpeed) windDesc += `, gusting to ${c.gustSpeed} mph`;
+      windDesc += ` amplify impact (\u00d7${imp.windMult.toFixed(2)})`;
+      if (c.windSpeed >= 35) windDesc += ' \u2014 blizzard conditions with falling/blowing snow';
+      detail += ` <em style="color:#a5b4fc">${windDesc}</em>`;
+    }
 
-    // Timeline cell
-    let tlCell = '<td class="timeline-cell" style="opacity:0.4">—</td>';
-    if (c.timeline) {
-      tlCell = `<td class="timeline-cell">
-        <div class="tl-first">\u2744\uFE0F ${formatTimeline(c.timeline.firstFlakes)}</div>
-        <div class="tl-peak">\u{1F328}\uFE0F ${formatTimeline(c.timeline.peak)}</div>
-        <div class="tl-last">\u2713 ${formatTimeline(c.timeline.lastSnow)}</div>
-      </td>`;
+    // Timeline cell — show per-phase breakdown
+    let tlCell = '<td class="timeline-cell" style="opacity:0.4">\u2014</td>';
+    if (c.timeline && c.timeline.phaseEvents) {
+      const phaseLines = c.timeline.phaseEvents.map(pe =>
+        `<div class="tl-phase-row tl-${pe.type}">${PRECIP_ICONS[pe.type]} ${formatTimeline(pe.startTime)} \u2192 ${formatTimeline(pe.endTime)} <span style="opacity:0.6">(peak ${formatTimeline(pe.peakTime)})</span></div>`
+      ).join('');
+      tlCell = `<td class="timeline-cell">${phaseLines}</td>`;
     }
 
     return `<tr>
       <td>${esc(c.name)}${locTag}</td>
-      <td style="font-weight:600">${formatSnow(c.snow)}</td>
+      ${precipCell}
       ${tlCell}
       <td><span class="res-pill res-${res.css}">${res.icon} ${res.label}</span></td>
       <td><span class="impact-pill impact-${imp.css}">${imp.level}</span></td>
@@ -819,6 +1146,23 @@ function generateProfile() {
   if (maxSnow >= 24) ff.push('This rivals some of the strongest storms on record!');
   if (maxSnow >= 36) ff.push('A storm this intense would likely be studied by meteorologists for decades.');
   if (maxSnow >= 48) ff.push('This would shatter all-time snowfall records for most locations.');
+
+  // Ice-specific fun facts
+  if (hasIce && totalIce >= 0.25) ff.push('\u{1F9CA} <strong>Ice warning:</strong> Even a quarter inch of ice can snap power lines, coat roads, and cause widespread outages lasting days.');
+  if (hasIce && totalIce >= 1) ff.push('\u{1F9CA} Over 1\u2033 of ice accumulation is catastrophic \u2014 trees collapse, power grids fail, and travel is impossible.');
+
+  // Wind fun facts
+  if (maxWind >= 35 && maxSnow >= 3) ff.push('\u{1F4A8} <strong>Blizzard conditions:</strong> Sustained winds of 35+ mph with snow create near-zero visibility and dangerous wind chill. The NWS would issue a <strong>Blizzard Warning</strong>.');
+  else if (maxWind >= 25 && maxSnow >= 2) ff.push('\u{1F4A8} High winds with snow cause significant drifting \u2014 plowed roads can drift shut within hours.');
+  if (maxGust >= 50) ff.push('\u{1F4A8} Gusts over 50 mph can topple trees onto power lines, especially those weighed down by ice or heavy snow.');
+  if (maxWind >= 45) ff.push('\u{1F32A}\uFE0F Violent winds make this storm exceptionally dangerous \u2014 travel is virtually impossible even without precipitation.');
+
+  // Mixed precip fun facts
+  if (hasRain && (hasIce || maxSnow >= 1)) {
+    const rainAfterWintry = cities.some(c => c.phases && c.phases.length > 1 &&
+      c.phases.findIndex(p => p.type === 'rain') > c.phases.findIndex(p => p.type !== 'rain'));
+    if (rainAfterWintry) ff.push('\u{1F327}\uFE0F Rain following wintry precipitation reduces overall impact by melting accumulation \u2014 but can cause flooding as snow melts rapidly.');
+  }
 
   const wide = sorted.filter(c => c.snow >= 1).length;
   if (wide >= 5) ff.push(`This storm has a wide footprint, impacting <strong>${wide} cities</strong> with 1\u2033 or more.`);
@@ -844,15 +1188,17 @@ function generateProfile() {
     <span class="storm-badge storm-color-${storm.css}">${storm.label}</span>
     <div class="stats-row">
       <div class="stat-box"><div class="val">${cities.length}</div><div class="lbl">${cities.length===1?'City':'Cities'} Impacted</div></div>
-      <div class="stat-box"><div class="val">${formatSnow(maxSnow)}</div><div class="lbl">Max Snowfall</div></div>
-      <div class="stat-box"><div class="val">${avgSnow<=0.05?'Trace':avgSnow.toFixed(1)+'\u2033'}</div><div class="lbl">Avg Snowfall</div></div>
+      <div class="stat-box"><div class="val">${formatSnow(maxSnow)}</div><div class="lbl">Max Frozen Precip</div></div>
+      <div class="stat-box"><div class="val">${avgSnow<=0.05?'Trace':avgSnow.toFixed(1)+'\u2033'}</div><div class="lbl">Avg Frozen Precip</div></div>
       <div class="stat-box"><div class="val">${rsiResult.totalRSI.toFixed(1)}</div><div class="lbl">RSI Score</div></div>
+      ${hasIce ? `<div class="stat-box"><div class="val" style="color:#c084fc">${totalIce.toFixed(1)}\u2033</div><div class="lbl">Total Ice</div></div>` : ''}
+      ${hasWind ? `<div class="stat-box"><div class="val" style="color:#a5b4fc">${maxWind}${maxGust ? '/G'+maxGust : ''}</div><div class="lbl">Max Wind (mph)</div></div>` : ''}
       ${coldestTemp !== null ? `<div class="stat-box"><div class="val">${coldestTemp}\u00b0F</div><div class="lbl">Coldest</div></div>` : ''}
       ${stormDurationHrs ? `<div class="stat-box"><div class="val">${stormDurationHrs}h</div><div class="lbl">Storm Duration</div></div>` : ''}
     </div>
     ${earliestFirst && latestLast ? `<div style="font-size:0.78rem;opacity:0.5;margin-bottom:8px">\u{1F552} Storm window: ${formatTimeline(earliestFirst)} \u2192 ${formatTimeline(latestLast)}</div>` : ''}
     <table class="impact-table">
-      <thead><tr><th>City</th><th>Snow</th><th>Storm Timeline</th><th>Resilience</th><th>Impact</th><th>School Impact</th><th>Details</th></tr></thead>
+      <thead><tr><th>City</th><th>Precip</th><th>Storm Timeline</th><th>Resilience</th><th>Impact</th><th>School Impact</th><th>Details</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="fun-fact">${ff.map(f=>'<p style="margin-bottom:6px">'+f+'</p>').join('')}</div>
@@ -887,98 +1233,161 @@ function generateProfile() {
 
 /* ---- Random Storm Generator ---- */
 const STORM_TEMPLATES = [
-  { type:"Northeast Nor'easter", regions:['NE'], severities:[
+  { type:"Northeast Nor'easter", regions:['NE'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.7}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:5 },
+    { phases:[{type:'snow',pct:0.8},{type:'rain',pct:0.2}], weight:2 },
+    { phases:[{type:'rain',pct:0.1},{type:'snow',pct:0.8},{type:'rain',pct:0.1}], weight:1 },
+    { phases:[{type:'snow',pct:0.7},{type:'sleet',pct:0.15},{type:'rain',pct:0.15}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[2,5],   fringe:[0.5,2],  cityCount:[2,5],   coldChance:0.1,  coldRange:[18,28] },
     { label:'Moderate',    centerSnow:[5,12],  fringe:[1,5],    cityCount:[4,9],   coldChance:0.25, coldRange:[8,22] },
     { label:'Significant', centerSnow:[10,18], fringe:[3,8],    cityCount:[6,13],  coldChance:0.4,  coldRange:[0,18] },
     { label:'Major',       centerSnow:[16,26], fringe:[5,12],   cityCount:[9,17],  coldChance:0.55, coldRange:[-8,12] },
     { label:'Extreme',     centerSnow:[24,36], fringe:[8,18],   cityCount:[13,22], coldChance:0.7,  coldRange:[-20,5] },
   ]},
-  { type:'Deep South Ice Storm', regions:['SO','SE'], severities:[
+  { type:'Deep South Ice Storm', regions:['SO','SE'], windProfile:{base:[5,15],severe:[10,30],gustAdd:[10,20],chance:0.5}, precipMix:[
+    { phases:[{type:'snow',pct:0.2},{type:'ice',pct:0.5},{type:'rain',pct:0.3}], weight:3 },
+    { phases:[{type:'ice',pct:0.6},{type:'rain',pct:0.4}], weight:3 },
+    { phases:[{type:'sleet',pct:0.3},{type:'ice',pct:0.5},{type:'rain',pct:0.2}], weight:2 },
+    { phases:[{type:'snow',pct:0.1},{type:'ice',pct:0.4},{type:'sleet',pct:0.2},{type:'rain',pct:0.3}], weight:2 },
+  ], severities:[
     { label:'Minor',       centerSnow:[1,3],   fringe:[0,1],    cityCount:[3,7],   coldChance:0.5,  coldRange:[20,30] },
     { label:'Moderate',    centerSnow:[1,4],   fringe:[0,1.5],  cityCount:[5,12],  coldChance:0.65, coldRange:[10,25] },
     { label:'Significant', centerSnow:[2,6],   fringe:[0.5,2],  cityCount:[8,16],  coldChance:0.8,  coldRange:[0,20] },
     { label:'Major',       centerSnow:[4,10],  fringe:[1,4],    cityCount:[12,20], coldChance:0.9,  coldRange:[-10,15] },
     { label:'Extreme',     centerSnow:[6,15],  fringe:[2,6],    cityCount:[16,26], coldChance:0.95, coldRange:[-15,5] },
   ]},
-  { type:'Midwest Blizzard', regions:['UM','OV'], severities:[
+  { type:'Midwest Blizzard', regions:['UM','OV'], windProfile:{base:[15,35],severe:[30,55],gustAdd:[10,30],chance:0.8}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:7 },
+    { phases:[{type:'snow',pct:0.9},{type:'sleet',pct:0.1}], weight:2 },
+    { phases:[{type:'sleet',pct:0.1},{type:'snow',pct:0.9}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[3,7],   fringe:[1,3],    cityCount:[3,7],   coldChance:0.2,  coldRange:[5,20] },
     { label:'Moderate',    centerSnow:[6,13],  fringe:[2,6],    cityCount:[6,12],  coldChance:0.4,  coldRange:[-5,15] },
     { label:'Significant', centerSnow:[10,18], fringe:[3,8],    cityCount:[8,16],  coldChance:0.6,  coldRange:[-15,5] },
     { label:'Major',       centerSnow:[16,26], fringe:[5,12],   cityCount:[12,20], coldChance:0.75, coldRange:[-25,0] },
     { label:'Extreme',     centerSnow:[22,36], fringe:[8,16],   cityCount:[16,26], coldChance:0.85, coldRange:[-35,-10] },
   ]},
-  { type:'Ohio Valley Wallop', regions:['OV'], severities:[
+  { type:'Ohio Valley Wallop', regions:['OV'], windProfile:{base:[8,20],severe:[20,40],gustAdd:[10,20],chance:0.6}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:4 },
+    { phases:[{type:'snow',pct:0.7},{type:'sleet',pct:0.2},{type:'rain',pct:0.1}], weight:2 },
+    { phases:[{type:'snow',pct:0.8},{type:'ice',pct:0.1},{type:'rain',pct:0.1}], weight:2 },
+    { phases:[{type:'rain',pct:0.1},{type:'snow',pct:0.9}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[2,5],   fringe:[0.5,2],  cityCount:[2,5],   coldChance:0.1,  coldRange:[15,25] },
     { label:'Moderate',    centerSnow:[5,10],  fringe:[1.5,4],  cityCount:[4,8],   coldChance:0.2,  coldRange:[5,20] },
     { label:'Significant', centerSnow:[8,15],  fringe:[3,6],    cityCount:[5,11],  coldChance:0.35, coldRange:[0,18] },
     { label:'Major',       centerSnow:[14,22], fringe:[5,10],   cityCount:[8,14],  coldChance:0.5,  coldRange:[-10,10] },
     { label:'Extreme',     centerSnow:[20,30], fringe:[8,16],   cityCount:[10,18], coldChance:0.65, coldRange:[-20,0] },
   ]},
-  { type:'Southern Snowpocalypse', regions:['SO'], severities:[
+  { type:'Southern Snowpocalypse', regions:['SO'], windProfile:{base:[5,15],severe:[15,35],gustAdd:[10,20],chance:0.5}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:3 },
+    { phases:[{type:'snow',pct:0.6},{type:'sleet',pct:0.2},{type:'rain',pct:0.2}], weight:3 },
+    { phases:[{type:'snow',pct:0.5},{type:'ice',pct:0.3},{type:'rain',pct:0.2}], weight:2 },
+    { phases:[{type:'sleet',pct:0.2},{type:'snow',pct:0.6},{type:'rain',pct:0.2}], weight:2 },
+  ], severities:[
     { label:'Minor',       centerSnow:[1.5,4], fringe:[0.5,1.5],cityCount:[3,8],   coldChance:0.15, coldRange:[18,28] },
     { label:'Moderate',    centerSnow:[2,6],   fringe:[0.5,2],  cityCount:[6,13],  coldChance:0.3,  coldRange:[10,24] },
     { label:'Significant', centerSnow:[4,10],  fringe:[1,4],    cityCount:[8,18],  coldChance:0.5,  coldRange:[0,20] },
     { label:'Major',       centerSnow:[8,16],  fringe:[2,7],    cityCount:[14,22], coldChance:0.65, coldRange:[-5,15] },
     { label:'Extreme',     centerSnow:[14,24], fringe:[4,10],   cityCount:[18,30], coldChance:0.8,  coldRange:[-15,5] },
   ]},
-  { type:'Gulf Coast Freeze', regions:['SO','SE'], severities:[
+  { type:'Gulf Coast Freeze', regions:['SO','SE'], windProfile:{base:[5,15],severe:[10,25],gustAdd:[5,15],chance:0.4}, precipMix:[
+    { phases:[{type:'ice',pct:0.6},{type:'rain',pct:0.4}], weight:4 },
+    { phases:[{type:'sleet',pct:0.3},{type:'ice',pct:0.4},{type:'rain',pct:0.3}], weight:3 },
+    { phases:[{type:'ice',pct:0.8},{type:'sleet',pct:0.2}], weight:2 },
+    { phases:[{type:'rain',pct:0.2},{type:'ice',pct:0.6},{type:'rain',pct:0.2}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[0,1],   fringe:[0,0.3],  cityCount:[3,6],   coldChance:0.7,  coldRange:[22,29] },
     { label:'Moderate',    centerSnow:[0,1],   fringe:[0,0.3],  cityCount:[4,10],  coldChance:0.85, coldRange:[15,27] },
     { label:'Significant', centerSnow:[0,2],   fringe:[0,0.5],  cityCount:[6,13],  coldChance:0.9,  coldRange:[5,22] },
     { label:'Major',       centerSnow:[0.5,3], fringe:[0,1],    cityCount:[8,16],  coldChance:0.95, coldRange:[-5,15] },
     { label:'Extreme',     centerSnow:[1,5],   fringe:[0,2],    cityCount:[12,20], coldChance:0.98, coldRange:[-15,5] },
   ]},
-  { type:'Southeast Surprise', regions:['SE'], severities:[
+  { type:'Southeast Surprise', regions:['SE'], windProfile:{base:[5,15],severe:[15,30],gustAdd:[10,20],chance:0.4}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:3 },
+    { phases:[{type:'snow',pct:0.6},{type:'rain',pct:0.4}], weight:3 },
+    { phases:[{type:'snow',pct:0.5},{type:'sleet',pct:0.3},{type:'rain',pct:0.2}], weight:2 },
+    { phases:[{type:'rain',pct:0.15},{type:'snow',pct:0.7},{type:'rain',pct:0.15}], weight:2 },
+  ], severities:[
     { label:'Minor',       centerSnow:[1.5,4], fringe:[0.5,1.5],cityCount:[2,5],   coldChance:0.1,  coldRange:[18,28] },
     { label:'Moderate',    centerSnow:[3,7],   fringe:[0.5,3],  cityCount:[4,9],   coldChance:0.2,  coldRange:[10,24] },
     { label:'Significant', centerSnow:[5,10],  fringe:[1,4],    cityCount:[6,13],  coldChance:0.35, coldRange:[5,20] },
     { label:'Major',       centerSnow:[8,16],  fringe:[3,7],    cityCount:[9,16],  coldChance:0.5,  coldRange:[-2,15] },
     { label:'Extreme',     centerSnow:[14,24], fringe:[5,12],   cityCount:[12,20], coldChance:0.65, coldRange:[-10,8] },
   ]},
-  { type:'Northern Rockies Dump', regions:['NR'], severities:[
+  { type:'Northern Rockies Dump', regions:['NR'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.6}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:8 },
+    { phases:[{type:'snow',pct:0.95},{type:'sleet',pct:0.05}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[3,8],   fringe:[1,3],    cityCount:[2,4],   coldChance:0.2,  coldRange:[5,20] },
     { label:'Moderate',    centerSnow:[7,15],  fringe:[2,6],    cityCount:[3,7],   coldChance:0.35, coldRange:[-5,15] },
     { label:'Significant', centerSnow:[12,22], fringe:[4,10],   cityCount:[5,9],   coldChance:0.5,  coldRange:[-15,8] },
     { label:'Major',       centerSnow:[20,32], fringe:[6,14],   cityCount:[6,11],  coldChance:0.65, coldRange:[-25,0] },
     { label:'Extreme',     centerSnow:[28,48], fringe:[10,20],  cityCount:[8,14],  coldChance:0.8,  coldRange:[-35,-10] },
   ]},
-  { type:'Clipper System', regions:['UM','OV','NE'], severities:[
+  { type:'Clipper System', regions:['UM','OV','NE'], windProfile:{base:[10,25],severe:[20,40],gustAdd:[10,20],chance:0.6}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:6 },
+    { phases:[{type:'snow',pct:0.85},{type:'sleet',pct:0.15}], weight:2 },
+    { phases:[{type:'snow',pct:0.7},{type:'rain',pct:0.3}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[1.5,4], fringe:[0.5,1.5],cityCount:[3,7],   coldChance:0.1,  coldRange:[12,25] },
     { label:'Moderate',    centerSnow:[2,5],   fringe:[0.5,2],  cityCount:[5,12],  coldChance:0.2,  coldRange:[5,20] },
     { label:'Significant', centerSnow:[4,8],   fringe:[1,3],    cityCount:[8,16],  coldChance:0.3,  coldRange:[0,15] },
     { label:'Major',       centerSnow:[6,12],  fringe:[2,5],    cityCount:[12,20], coldChance:0.45, coldRange:[-10,10] },
     { label:'Extreme',     centerSnow:[10,18], fringe:[3,8],    cityCount:[16,26], coldChance:0.6,  coldRange:[-20,0] },
   ]},
-  { type:'Historic East Coast Storm', regions:['NE','SE','OV'], severities:[
+  { type:'Historic East Coast Storm', regions:['NE','SE','OV'], windProfile:{base:[15,30],severe:[30,55],gustAdd:[10,30],chance:0.75}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:4 },
+    { phases:[{type:'snow',pct:0.75},{type:'sleet',pct:0.15},{type:'rain',pct:0.1}], weight:2 },
+    { phases:[{type:'rain',pct:0.05},{type:'snow',pct:0.85},{type:'rain',pct:0.1}], weight:2 },
+    { phases:[{type:'snow',pct:0.6},{type:'ice',pct:0.2},{type:'rain',pct:0.2}], weight:1 },
+  ], severities:[
     { label:'Minor',       centerSnow:[4,9],   fringe:[1,4],    cityCount:[5,10],  coldChance:0.15, coldRange:[15,25] },
     { label:'Moderate',    centerSnow:[8,16],  fringe:[2,7],    cityCount:[8,16],  coldChance:0.3,  coldRange:[5,20] },
     { label:'Significant', centerSnow:[14,22], fringe:[4,10],   cityCount:[12,22], coldChance:0.5,  coldRange:[-2,15] },
     { label:'Major',       centerSnow:[20,30], fringe:[6,14],   cityCount:[18,28], coldChance:0.6,  coldRange:[-10,10] },
     { label:'Extreme',     centerSnow:[26,40], fringe:[10,20],  cityCount:[22,36], coldChance:0.75, coldRange:[-20,0] },
   ]},
-  { type:'Polar Vortex Outbreak', regions:['UM','OV','SO','NE'], severities:[
+  { type:'Polar Vortex Outbreak', regions:['UM','OV','SO','NE'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.7}, precipMix:[
+    { phases:[{type:'snow',pct:0.7},{type:'ice',pct:0.2},{type:'sleet',pct:0.1}], weight:3 },
+    { phases:[{type:'snow',pct:1.0}], weight:3 },
+    { phases:[{type:'ice',pct:0.4},{type:'snow',pct:0.4},{type:'sleet',pct:0.2}], weight:2 },
+    { phases:[{type:'snow',pct:0.5},{type:'ice',pct:0.3},{type:'rain',pct:0.2}], weight:2 },
+  ], severities:[
     { label:'Minor',       centerSnow:[1,4],   fringe:[0.5,1.5],cityCount:[5,10],  coldChance:0.6,  coldRange:[0,15] },
     { label:'Moderate',    centerSnow:[2,6],   fringe:[0,2],    cityCount:[8,16],  coldChance:0.75, coldRange:[-10,5] },
     { label:'Significant', centerSnow:[4,10],  fringe:[0.5,4],  cityCount:[12,22], coldChance:0.85, coldRange:[-20,-2] },
     { label:'Major',       centerSnow:[6,14],  fringe:[1,5],    cityCount:[16,26], coldChance:0.92, coldRange:[-30,-8] },
     { label:'Extreme',     centerSnow:[10,20], fringe:[2,8],    cityCount:[22,34], coldChance:0.97, coldRange:[-45,-15] },
   ]},
-  { type:'Texas Winter Emergency', regions:['SO'], severities:[
+  { type:'Texas Winter Emergency', regions:['SO'], windProfile:{base:[5,15],severe:[15,35],gustAdd:[10,20],chance:0.5}, precipMix:[
+    { phases:[{type:'ice',pct:0.5},{type:'rain',pct:0.3},{type:'sleet',pct:0.2}], weight:3 },
+    { phases:[{type:'snow',pct:0.3},{type:'ice',pct:0.5},{type:'rain',pct:0.2}], weight:3 },
+    { phases:[{type:'ice',pct:0.7},{type:'rain',pct:0.3}], weight:2 },
+    { phases:[{type:'sleet',pct:0.2},{type:'ice',pct:0.4},{type:'snow',pct:0.2},{type:'rain',pct:0.2}], weight:2 },
+  ], severities:[
     { label:'Minor',       centerSnow:[1,3],   fringe:[0,1],    cityCount:[3,7],   coldChance:0.5,  coldRange:[15,28] },
     { label:'Moderate',    centerSnow:[1,4],   fringe:[0,1.5],  cityCount:[5,11],  coldChance:0.7,  coldRange:[5,22] },
     { label:'Significant', centerSnow:[3,7],   fringe:[0.5,3],  cityCount:[8,15],  coldChance:0.85, coldRange:[-5,15] },
     { label:'Major',       centerSnow:[5,12],  fringe:[1,5],    cityCount:[10,18], coldChance:0.9,  coldRange:[-15,8] },
     { label:'Extreme',     centerSnow:[8,18],  fringe:[2,8],    cityCount:[14,22], coldChance:0.95, coldRange:[-25,0] },
   ]},
-  { type:'Flurry Dud', regions:'weighted-single', severities:[
+  { type:'Flurry Dud', regions:'weighted-single', windProfile:{base:[0,10],severe:[5,15],gustAdd:[0,10],chance:0.2}, precipMix:[
+    { phases:[{type:'snow',pct:1.0}], weight:8 },
+    { phases:[{type:'snow',pct:0.8},{type:'rain',pct:0.2}], weight:2 },
+  ], severities:[
     { label:'Flurry Dud', centerSnow:[0.3,1],   fringe:[0,0.3],  cityCount:[1,2],   coldChance:0.05, coldRange:[26,32] },
     { label:'Flurry Dud', centerSnow:[0.3,1.2], fringe:[0,0.3],  cityCount:[1,2],   coldChance:0.05, coldRange:[25,32] },
     { label:'Flurry Dud', centerSnow:[0.5,1.5], fringe:[0,0.5],  cityCount:[1,3],   coldChance:0.08, coldRange:[24,31] },
     { label:'Flurry Dud', centerSnow:[0.5,1.5], fringe:[0,0.5],  cityCount:[2,3],   coldChance:0.08, coldRange:[22,30] },
     { label:'Flurry Dud', centerSnow:[0.5,2],   fringe:[0,0.5],  cityCount:[2,4],   coldChance:0.1,  coldRange:[20,30] },
   ]},
-  { type:'Omega Continental Blizzard Outbreak', regions:'all-continental', severities:[
+  { type:'Omega Continental Blizzard Outbreak', regions:'all-continental', windProfile:{base:[25,50],severe:[45,80],gustAdd:[15,35],chance:0.9}, precipMix:[
+    { phases:[{type:'snow',pct:0.8},{type:'ice',pct:0.1},{type:'sleet',pct:0.1}], weight:4 },
+    { phases:[{type:'snow',pct:1.0}], weight:3 },
+    { phases:[{type:'ice',pct:0.2},{type:'snow',pct:0.6},{type:'ice',pct:0.2}], weight:2 },
+  ], severities:[
     { label:'Omega Continental Blizzard Outbreak', centerSnow:[120,180], fringe:[60,100], cityCount:[150,220], coldChance:0.95, coldRange:[-60,-20] },
     { label:'Omega Continental Blizzard Outbreak', centerSnow:[140,210], fringe:[70,120], cityCount:[180,260], coldChance:0.96, coldRange:[-70,-25] },
     { label:'Omega Continental Blizzard Outbreak', centerSnow:[160,240], fringe:[80,140], cityCount:[220,300], coldChance:0.97, coldRange:[-80,-30] },
@@ -1029,23 +1438,63 @@ function getStormDate() {
   return new Date();
 }
 
-function calculateTimeline(snow, isCenter, stormStart) {
-  // Fringe cities see snow first (storm edge arrives); center cities later
+function calculateTimeline(phases, isCenter, stormStart) {
+  if (!phases || !phases.length) return null;
+
+  // Fringe cities see precip first (storm edge arrives); center cities later
   const arrivalOffset = isCenter ? rand(3, 8) : rand(0, 4); // hours
 
-  // Duration scales with snowfall: more snow = longer storm
-  const durationHrs = snow <= 0.05
+  // Total precipitation for duration calc
+  const totalPrecip = phases.reduce((s, p) => s + p.amount, 0);
+
+  // Duration scales with total precipitation
+  const totalDurationHrs = totalPrecip <= 0.05
     ? rand(0.5, 1.5)
-    : Math.max(1.5, snow * 1.4 + rand(-1.5, 1.5));
+    : Math.max(1.5, totalPrecip * 1.4 + rand(-1.5, 1.5));
 
-  // Peak is 40-60% through the storm
-  const peakPct = rand(0.4, 0.6);
+  const stormStartTime = new Date(stormStart.getTime() + arrivalOffset * 3600000);
 
-  const firstFlakes = new Date(stormStart.getTime() + arrivalOffset * 3600000);
-  const peak = new Date(firstFlakes.getTime() + durationHrs * peakPct * 3600000);
-  const lastSnow = new Date(firstFlakes.getTime() + durationHrs * 3600000);
+  // Divide duration among phases proportional to amounts (min 0.5 hrs each)
+  const minPhaseHrs = 0.5;
+  const totalAmount = phases.reduce((s, p) => s + Math.max(p.amount, 0.05), 0);
+  let remainingHrs = totalDurationHrs;
+  const phaseDurations = phases.map(p => {
+    const proportion = Math.max(p.amount, 0.05) / totalAmount;
+    return Math.max(minPhaseHrs, proportion * totalDurationHrs);
+  });
+  // Normalize to fit total duration
+  const durSum = phaseDurations.reduce((s, d) => s + d, 0);
+  const scale = totalDurationHrs / durSum;
+  phaseDurations.forEach((d, i) => phaseDurations[i] = d * scale);
 
-  return { firstFlakes, peak, lastSnow };
+  // Build phase events with sequential timing
+  const phaseEvents = [];
+  let cursor = stormStartTime.getTime();
+  phases.forEach((p, i) => {
+    const durMs = phaseDurations[i] * 3600000;
+    const phaseStart = new Date(cursor);
+    const peakPct = rand(0.4, 0.6);
+    const peakTime = new Date(cursor + durMs * peakPct);
+    const phaseEnd = new Date(cursor + durMs);
+    phaseEvents.push({
+      type: p.type,
+      amount: p.amount,
+      startTime: phaseStart,
+      peakTime: peakTime,
+      endTime: phaseEnd
+    });
+    // Small gap between phases (0-10 min) for realism
+    cursor = phaseEnd.getTime() + (i < phases.length - 1 ? rand(0, 10) * 60000 : 0);
+  });
+
+  return {
+    start: phaseEvents[0].startTime,
+    end: phaseEvents[phaseEvents.length - 1].endTime,
+    phaseEvents,
+    // Keep legacy fields for backward compat with storm window stats
+    firstFlakes: phaseEvents[0].startTime,
+    lastSnow: phaseEvents[phaseEvents.length - 1].endTime
+  };
 }
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1066,7 +1515,7 @@ function computeAllTimelines() {
 
   cities.forEach((c, i) => {
     const isCenter = centerIndices.has(i);
-    c.timeline = calculateTimeline(c.snow, isCenter, stormStart);
+    c.timeline = calculateTimeline(c.phases || [{type:'snow', amount:c.snow}], isCenter, stormStart);
     c.isCenter = isCenter;
   });
 }
@@ -1120,41 +1569,87 @@ function generateRandomStorm() {
   const centerCount = Math.max(1, Math.round(chosen.length * 0.3));
   cities.length = 0;
 
+  // Pick a precipitation mix template for this storm (weighted random)
+  function pickPrecipMix(mixArr) {
+    if (!mixArr || !mixArr.length) return [{ type: 'snow', pct: 1.0 }];
+    const totalW = mixArr.reduce((s, m) => s + m.weight, 0);
+    let roll = Math.random() * totalW;
+    for (const m of mixArr) {
+      roll -= m.weight;
+      if (roll <= 0) return m.phases;
+    }
+    return mixArr[0].phases;
+  }
+
   chosen.forEach((c, i) => {
-    let snow;
+    let totalAmount;
     const isCenter = i < centerCount;
     if (isCenter) {
-      snow = Math.round(rand(sev.centerSnow[0], sev.centerSnow[1]) * 10) / 10;
+      totalAmount = Math.round(rand(sev.centerSnow[0], sev.centerSnow[1]) * 10) / 10;
     } else {
-      snow = Math.round(rand(sev.fringe[0], sev.fringe[1]) * 10) / 10;
+      totalAmount = Math.round(rand(sev.fringe[0], sev.fringe[1]) * 10) / 10;
     }
 
-    // Continental mode: scale snowfall by resilience
-    // High-resilience cities (Buffalo, Syracuse) get the full amount or more
-    // Low-resilience cities (Miami, Houston) get proportionally less
+    // Continental mode: scale by resilience
     if (isAllContinental) {
       const resFactor = getResilienceFactor(c.snow);
-      // Scale: elite (2.2) → 1.3x multiplier, zero (0.2) → 0.25x multiplier
-      // This means Syracuse could see 1.3× the base while Miami sees 0.25×
       const resScale = 0.15 + (resFactor / 2.2) * 1.15;
-      snow = Math.round(snow * resScale * 10) / 10;
+      totalAmount = Math.round(totalAmount * resScale * 10) / 10;
     }
 
     // Small chance of trace for fringe cities
-    if (snow > 0 && snow < 0.3 && Math.random() < 0.4) snow = 0.05;
-    if (snow < 0) snow = 0;
+    if (totalAmount > 0 && totalAmount < 0.3 && Math.random() < 0.4) totalAmount = 0.05;
+    if (totalAmount < 0) totalAmount = 0;
 
+    // Generate precipitation phases from mix template
+    const mixTemplate = pickPrecipMix(template.precipMix);
+    let phases;
+    if (totalAmount <= 0.05) {
+      // Trace: just snow
+      phases = [{ type: 'snow', amount: totalAmount }];
+    } else {
+      phases = mixTemplate.map(mp => ({
+        type: mp.type,
+        amount: Math.max(0.05, Math.round(totalAmount * mp.pct * (0.8 + Math.random() * 0.4) * 10) / 10)
+      }));
+      // Filter out negligible rain phases
+      phases = phases.filter(p => p.amount >= 0.05 || p.type !== 'rain');
+    }
+
+    const derived = computeDerivedPrecip(phases);
     const recordCold = Math.random() < sev.coldChance;
     const coldTemp = recordCold ? randInt(sev.coldRange[0], sev.coldRange[1]) : null;
 
+    // Generate wind from template wind profile, scaling with severity
+    let windSpeed = null, gustSpeedVal = null;
+    const wp = template.windProfile;
+    if (wp && Math.random() < wp.chance) {
+      // Severity scales between base and severe ranges (sevIdx 0-4)
+      const sevPct = sevIdx / 4;
+      const wsMin = Math.round(wp.base[0] + (wp.severe[0] - wp.base[0]) * sevPct);
+      const wsMax = Math.round(wp.base[1] + (wp.severe[1] - wp.base[1]) * sevPct);
+      windSpeed = randInt(wsMin, wsMax);
+      // Center cities get higher wind; fringe cities get scaled down
+      if (!isCenter) windSpeed = Math.max(0, Math.round(windSpeed * rand(0.5, 0.85)));
+      // Gusts
+      if (windSpeed > 0 && Math.random() < 0.7) {
+        gustSpeedVal = windSpeed + randInt(wp.gustAdd[0], wp.gustAdd[1]);
+      }
+      if (windSpeed <= 0) { windSpeed = null; gustSpeedVal = null; }
+    }
+
     cities.push({
       name: c.n,
-      snow,
+      phases,
+      snow: derived.snow,
+      snowEquivalent: derived.snowEquivalent,
       pop: c.pop,
       region: c.r,
       annualSnow: c.snow,
       recordCold,
-      coldTemp
+      coldTemp,
+      windSpeed,
+      gustSpeed: gustSpeedVal
     });
   });
 
@@ -1190,7 +1685,8 @@ addBtn.addEventListener('click', addCity);
 generateBtn.addEventListener('click', generateProfile);
 clearBtn.addEventListener('click', clearAll);
 document.getElementById('randomBtn').addEventListener('click', generateRandomStorm);
-snowInput.addEventListener('keydown', e => { if (e.key==='Enter') addCity(); });
+// Phase amount inputs: Enter key adds city
+phaseBuilder.addEventListener('keydown', e => { if (e.key==='Enter' && e.target.classList.contains('phase-amt-input')) addCity(); });
 
 /* ---- Snowflakes ---- */
 (function() {
