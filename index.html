@@ -83,6 +83,25 @@
   .date-field label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; display: block; margin-bottom: 3px; }
   .date-field input[type="datetime-local"] { padding: 8px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); color: #fff; border: 1px solid rgba(255,255,255,0.2); font-size: 0.88rem; outline: none; }
   .date-field input:focus { border-color: #5b9cf5; }
+
+  .storm-track-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .storm-track-row label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; display: block; margin-bottom: 3px; }
+  .storm-track-row select { padding: 8px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); color: #fff; border: 1px solid rgba(255,255,255,0.2); font-size: 0.88rem; outline: none; }
+  .storm-track-row select:focus { border-color: #5b9cf5; }
+  .storm-track-row .crossing-field { flex: 1; min-width: 180px; }
+  .storm-track-row .help-text { font-size: 0.7rem; opacity: 0.4; margin-top: 3px; }
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px;
+    background: rgba(0,0,0,0.3); outline: none; margin-top: 6px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #5b9cf5; cursor: pointer; border: none;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #5b9cf5; cursor: pointer; border: none;
+  }
   .timeline-cell { font-size: 0.72rem; line-height: 1.6; white-space: nowrap; }
   .timeline-cell .tl-first { color: #93c5fd; }
   .timeline-cell .tl-peak { color: #fbbf24; font-weight: 600; }
@@ -310,6 +329,18 @@
       <label for="stormDate">Storm start date &amp; time</label>
       <input type="datetime-local" id="stormDate">
     </div>
+    <div class="storm-track-row">
+      <div>
+        <label for="stormDirection">Storm direction</label>
+        <select id="stormDirection"></select>
+        <div class="help-text">Which way is the storm moving?</div>
+      </div>
+      <div class="crossing-field">
+        <label for="crossingTime">Crossing time: <span id="crossingTimeLabel">12 hrs</span></label>
+        <input type="range" id="crossingTime" min="4" max="30" value="12" step="1">
+        <div class="help-text">Hours from first city hit to last</div>
+      </div>
+    </div>
     <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
       <button class="btn-generate" id="generateBtn" disabled>Generate Storm Profile</button>
       <button class="btn-clear" id="clearBtn">Clear All</button>
@@ -347,177 +378,190 @@
    RSI regions: NE SE OV UM SO NR — null for non-RSI areas
    ====================================================================== */
 const RAW_CITIES = [
+  // [name, population(k), RSI region, annual snow(in), lat, lon]
   // ---- NORTHEAST ----
-  ["New York, NY",8336,"NE",30],["Philadelphia, PA",1604,"NE",23],["Boston, MA",675,"NE",49],
-  ["Pittsburgh, PA",303,"NE",42],["Newark, NJ",311,"NE",28],["Buffalo, NY",278,"NE",95],
-  ["Rochester, NY",211,"NE",99],["Syracuse, NY",148,"NE",127],["Albany, NY",99,"NE",60],
-  ["Hartford, CT",121,"NE",50],["Providence, RI",191,"NE",35],["Bridgeport, CT",148,"NE",26],
-  ["New Haven, CT",134,"NE",36],["Scranton, PA",77,"NE",47],["Allentown, PA",126,"NE",33],
-  ["Trenton, NJ",91,"NE",26],["Binghamton, NY",47,"NE",83],["Portland, ME",68,"NE",62],
-  ["Burlington, VT",45,"NE",74],["Manchester, NH",115,"NE",63],["Bangor, ME",32,"NE",67],
-  ["Concord, NH",43,"NE",64],["Montpelier, VT",8,"NE",81],["Worcester, MA",206,"NE",67],
-  ["Springfield, MA",155,"NE",44],["Erie, PA",95,"NE",101],["Utica, NY",62,"NE",72],
-  ["Watertown, NY",25,"NE",110],["Atlantic City, NJ",40,"NE",16],
-  ["Washington, DC",689,"NE",15],["Baltimore, MD",585,"NE",20],
-  ["Williamsport, PA",29,"NE",37],["Ithaca, NY",32,"NE",65],["Rutland, VT",16,"NE",72],
-  ["Plattsburgh, NY",20,"NE",68],["Glens Falls, NY",15,"NE",62],
+  ["New York, NY",8336,"NE",30,40.7,-74.0],["Philadelphia, PA",1604,"NE",23,40.0,-75.2],["Boston, MA",675,"NE",49,42.4,-71.1],
+  ["Pittsburgh, PA",303,"NE",42,40.4,-80.0],["Newark, NJ",311,"NE",28,40.7,-74.2],["Buffalo, NY",278,"NE",95,42.9,-78.9],
+  ["Rochester, NY",211,"NE",99,43.2,-77.6],["Syracuse, NY",148,"NE",127,43.0,-76.1],["Albany, NY",99,"NE",60,42.7,-73.8],
+  ["Hartford, CT",121,"NE",50,41.8,-72.7],["Providence, RI",191,"NE",35,41.8,-71.4],["Bridgeport, CT",148,"NE",26,41.2,-73.2],
+  ["New Haven, CT",134,"NE",36,41.3,-72.9],["Scranton, PA",77,"NE",47,41.4,-75.7],["Allentown, PA",126,"NE",33,40.6,-75.5],
+  ["Trenton, NJ",91,"NE",26,40.2,-74.8],["Binghamton, NY",47,"NE",83,42.1,-75.9],["Portland, ME",68,"NE",62,43.7,-70.3],
+  ["Burlington, VT",45,"NE",74,44.5,-73.2],["Manchester, NH",115,"NE",63,43.0,-71.5],["Bangor, ME",32,"NE",67,44.8,-68.8],
+  ["Concord, NH",43,"NE",64,43.2,-71.5],["Montpelier, VT",8,"NE",81,44.3,-72.6],["Worcester, MA",206,"NE",67,42.3,-71.8],
+  ["Springfield, MA",155,"NE",44,42.1,-72.6],["Erie, PA",95,"NE",101,42.1,-80.1],["Utica, NY",62,"NE",72,43.1,-75.2],
+  ["Watertown, NY",25,"NE",110,43.9,-75.9],["Atlantic City, NJ",40,"NE",16,39.4,-74.4],
+  ["Washington, DC",689,"NE",15,38.9,-77.0],["Baltimore, MD",585,"NE",20,39.3,-76.6],
+  ["Williamsport, PA",29,"NE",37,41.2,-77.0],["Ithaca, NY",32,"NE",65,42.4,-76.5],["Rutland, VT",16,"NE",72,43.6,-72.97],
+  ["Plattsburgh, NY",20,"NE",68,44.7,-73.5],["Glens Falls, NY",15,"NE",62,43.3,-73.6],
   // ---- SOUTHEAST ----
-  ["Atlanta, GA",499,"SE",2],["Charlotte, NC",874,"SE",6],["Raleigh, NC",467,"SE",5],
-  ["Richmond, VA",227,"SE",13],["Virginia Beach, VA",459,"SE",7],["Jacksonville, FL",949,"SE",0],
-  ["Charleston, SC",150,"SE",1],["Columbia, SC",138,"SE",2],["Greensboro, NC",299,"SE",9],
-  ["Winston-Salem, NC",250,"SE",9],["Durham, NC",283,"SE",6],["Savannah, GA",147,"SE",0.3],
-  ["Greenville, SC",75,"SE",5],["Asheville, NC",94,"SE",15],["Knoxville, TN",190,"SE",10],
-  ["Chattanooga, TN",182,"SE",4],["Wilmington, NC",123,"SE",2],["Norfolk, VA",238,"SE",7],
-  ["Fayetteville, NC",208,"SE",3],["Augusta, GA",202,"SE",2],["Macon, GA",157,"SE",1],
-  ["Lynchburg, VA",82,"SE",18],["Roanoke, VA",100,"SE",22],["Bristol, VA",28,"SE",18],
-  ["Hickory, NC",40,"SE",8],["Florence, SC",38,"SE",2],
-  ["Bainbridge, GA",13,"SE",0.5],["Albany, GA",77,"SE",1],["Tallahassee, FL",196,"SE",0.1],["Orlando, FL",310,"SE",0],["Miami, FL",470,"SE",0],
+  ["Atlanta, GA",499,"SE",2,33.7,-84.4],["Charlotte, NC",874,"SE",6,35.2,-80.8],["Raleigh, NC",467,"SE",5,35.8,-78.6],
+  ["Richmond, VA",227,"SE",13,37.5,-77.4],["Virginia Beach, VA",459,"SE",7,36.9,-76.0],["Jacksonville, FL",949,"SE",0,30.3,-81.7],
+  ["Charleston, SC",150,"SE",1,32.8,-79.9],["Columbia, SC",138,"SE",2,34.0,-81.0],["Greensboro, NC",299,"SE",9,36.1,-79.8],
+  ["Winston-Salem, NC",250,"SE",9,36.1,-80.2],["Durham, NC",283,"SE",6,36.0,-78.9],["Savannah, GA",147,"SE",0.3,32.1,-81.1],
+  ["Greenville, SC",75,"SE",5,34.9,-82.4],["Asheville, NC",94,"SE",15,35.6,-82.6],["Knoxville, TN",190,"SE",10,35.9,-83.9],
+  ["Chattanooga, TN",182,"SE",4,35.0,-85.3],["Wilmington, NC",123,"SE",2,34.2,-77.9],["Norfolk, VA",238,"SE",7,36.8,-76.3],
+  ["Fayetteville, NC",208,"SE",3,35.1,-78.9],["Augusta, GA",202,"SE",2,33.5,-82.0],["Macon, GA",157,"SE",1,32.8,-83.6],
+  ["Lynchburg, VA",82,"SE",18,37.4,-79.1],["Roanoke, VA",100,"SE",22,37.3,-79.9],["Bristol, VA",28,"SE",18,36.6,-82.2],
+  ["Hickory, NC",40,"SE",8,35.7,-81.3],["Florence, SC",38,"SE",2,34.2,-79.8],
+  ["Bainbridge, GA",13,"SE",0.5,30.9,-84.6],["Albany, GA",77,"SE",1,31.6,-84.2],["Tallahassee, FL",196,"SE",0.1,30.4,-84.3],["Orlando, FL",310,"SE",0,28.5,-81.4],["Miami, FL",470,"SE",0,25.8,-80.2],
   // ---- OHIO VALLEY ----
-  ["Chicago, IL",2697,"OV",36],["Detroit, MI",639,"OV",43],["Columbus, OH",905,"OV",28],
-  ["Indianapolis, IN",887,"OV",26],["Cleveland, OH",373,"OV",63],["Cincinnati, OH",309,"OV",23],
-  ["Louisville, KY",633,"OV",15],["Nashville, TN",689,"OV",10],["Milwaukee, WI",577,"OV",52],
-  ["St. Louis, MO",301,"OV",17],["Grand Rapids, MI",198,"OV",75],["Akron, OH",190,"OV",50],
-  ["Dayton, OH",137,"OV",25],["Toledo, OH",270,"OV",38],["Fort Wayne, IN",264,"OV",33],
-  ["Lexington, KY",322,"OV",16],["Evansville, IN",117,"OV",13],["South Bend, IN",103,"OV",72],
-  ["Springfield, IL",114,"OV",22],["Peoria, IL",113,"OV",25],["Rockford, IL",148,"OV",37],
-  ["Lansing, MI",112,"OV",51],["Kalamazoo, MI",75,"OV",66],["Canton, OH",71,"OV",41],
-  ["Youngstown, OH",60,"OV",57],["Flint, MI",97,"OV",43],["Ann Arbor, MI",123,"OV",48],
-  ["Madison, WI",269,"OV",51],["Green Bay, WI",107,"OV",51],["Champaign, IL",88,"OV",24],
-  ["Decatur, IL",71,"OV",21],["Bloomington, IL",78,"OV",24],["Terre Haute, IN",59,"OV",18],
-  ["Muncie, IN",65,"OV",23],["Bowling Green, KY",73,"OV",12],["Paducah, KY",25,"OV",10],
-  ["Owensboro, KY",60,"OV",11],["Zanesville, OH",25,"OV",29],["Mansfield, OH",47,"OV",45],
-  ["Lima, OH",37,"OV",30],["Saginaw, MI",44,"OV",45],["Traverse City, MI",15,"OV",95],
-  ["Marquette, MI",21,"OV",149],["Appleton, WI",75,"OV",47],["Oshkosh, WI",67,"OV",40],
-  ["Wausau, WI",39,"OV",56],["Muskegon, MI",38,"OV",96],
+  ["Chicago, IL",2697,"OV",36,41.9,-87.6],["Detroit, MI",639,"OV",43,42.3,-83.0],["Columbus, OH",905,"OV",28,40.0,-82.9],
+  ["Indianapolis, IN",887,"OV",26,39.8,-86.2],["Cleveland, OH",373,"OV",63,41.5,-81.7],["Cincinnati, OH",309,"OV",23,39.1,-84.5],
+  ["Louisville, KY",633,"OV",15,38.3,-85.8],["Nashville, TN",689,"OV",10,36.2,-86.8],["Milwaukee, WI",577,"OV",52,43.0,-87.9],
+  ["St. Louis, MO",301,"OV",17,38.6,-90.2],["Grand Rapids, MI",198,"OV",75,43.0,-85.7],["Akron, OH",190,"OV",50,41.1,-81.5],
+  ["Dayton, OH",137,"OV",25,39.8,-84.2],["Toledo, OH",270,"OV",38,41.7,-83.5],["Fort Wayne, IN",264,"OV",33,41.1,-85.1],
+  ["Lexington, KY",322,"OV",16,38.0,-84.5],["Evansville, IN",117,"OV",13,38.0,-87.6],["South Bend, IN",103,"OV",72,41.7,-86.3],
+  ["Springfield, IL",114,"OV",22,39.8,-89.6],["Peoria, IL",113,"OV",25,40.7,-89.6],["Rockford, IL",148,"OV",37,42.3,-89.1],
+  ["Lansing, MI",112,"OV",51,42.7,-84.6],["Kalamazoo, MI",75,"OV",66,42.3,-85.6],["Canton, OH",71,"OV",41,40.8,-81.4],
+  ["Youngstown, OH",60,"OV",57,41.1,-80.6],["Flint, MI",97,"OV",43,43.0,-83.7],["Ann Arbor, MI",123,"OV",48,42.3,-83.7],
+  ["Madison, WI",269,"OV",51,43.1,-89.4],["Green Bay, WI",107,"OV",51,44.5,-88.0],["Champaign, IL",88,"OV",24,40.1,-88.2],
+  ["Decatur, IL",71,"OV",21,39.8,-88.9],["Bloomington, IL",78,"OV",24,40.5,-89.0],["Terre Haute, IN",59,"OV",18,39.5,-87.4],
+  ["Muncie, IN",65,"OV",23,40.2,-85.4],["Bowling Green, KY",73,"OV",12,37.0,-86.4],["Paducah, KY",25,"OV",10,37.1,-88.6],
+  ["Owensboro, KY",60,"OV",11,37.8,-87.1],["Zanesville, OH",25,"OV",29,39.9,-82.0],["Mansfield, OH",47,"OV",45,40.8,-82.5],
+  ["Lima, OH",37,"OV",30,40.7,-84.1],["Saginaw, MI",44,"OV",45,43.4,-84.0],["Traverse City, MI",15,"OV",95,44.8,-85.6],
+  ["Marquette, MI",21,"OV",149,46.5,-87.4],["Appleton, WI",75,"OV",47,44.3,-88.4],["Oshkosh, WI",67,"OV",40,44.0,-88.5],
+  ["Wausau, WI",39,"OV",56,44.9,-89.6],["Muskegon, MI",38,"OV",96,43.2,-86.2],
   // ---- UPPER MIDWEST ----
-  ["Minneapolis, MN",429,"UM",54],["St. Paul, MN",311,"UM",52],["Des Moines, IA",215,"UM",35],
-  ["Omaha, NE",487,"UM",30],["Duluth, MN",90,"UM",86],["Sioux Falls, SD",193,"UM",42],
-  ["Rochester, MN",121,"UM",52],["Cedar Rapids, IA",137,"UM",35],["Davenport, IA",101,"UM",33],
-  ["Fargo, ND",125,"UM",51],["Bismarck, ND",74,"UM",50],["Rapid City, SD",77,"UM",41],
-  ["Lincoln, NE",291,"UM",26],["Grand Forks, ND",56,"UM",47],["Eau Claire, WI",69,"UM",51],
-  ["La Crosse, WI",52,"UM",45],["Mankato, MN",44,"UM",43],["Waterloo, IA",68,"UM",36],
-  ["Mason City, IA",27,"UM",39],["Aberdeen, SD",28,"UM",44],["Sioux City, IA",86,"UM",35],
-  ["St. Cloud, MN",69,"UM",47],["Bemidji, MN",15,"UM",51],["International Falls, MN",6,"UM",66],
-  ["Mitchell, SD",16,"UM",38],["Pierre, SD",14,"UM",36],["Minot, ND",48,"UM",43],
-  ["Williston, ND",27,"UM",37],["Dubuque, IA",59,"UM",42],["Iowa City, IA",74,"UM",32],
-  ["Ames, IA",66,"UM",34],
+  ["Minneapolis, MN",429,"UM",54,44.98,-93.3],["St. Paul, MN",311,"UM",52,44.9,-93.1],["Des Moines, IA",215,"UM",35,41.6,-93.6],
+  ["Omaha, NE",487,"UM",30,41.3,-96.0],["Duluth, MN",90,"UM",86,46.8,-92.1],["Sioux Falls, SD",193,"UM",42,43.5,-96.7],
+  ["Rochester, MN",121,"UM",52,44.0,-92.5],["Cedar Rapids, IA",137,"UM",35,42.0,-91.6],["Davenport, IA",101,"UM",33,41.5,-90.6],
+  ["Fargo, ND",125,"UM",51,46.9,-96.8],["Bismarck, ND",74,"UM",50,46.8,-100.8],["Rapid City, SD",77,"UM",41,44.1,-103.2],
+  ["Lincoln, NE",291,"UM",26,40.8,-96.7],["Grand Forks, ND",56,"UM",47,47.9,-97.0],["Eau Claire, WI",69,"UM",51,44.8,-91.5],
+  ["La Crosse, WI",52,"UM",45,43.8,-91.2],["Mankato, MN",44,"UM",43,44.2,-94.0],["Waterloo, IA",68,"UM",36,42.5,-92.3],
+  ["Mason City, IA",27,"UM",39,43.2,-93.2],["Aberdeen, SD",28,"UM",44,45.5,-98.5],["Sioux City, IA",86,"UM",35,42.5,-96.4],
+  ["St. Cloud, MN",69,"UM",47,45.6,-94.2],["Bemidji, MN",15,"UM",51,47.5,-94.9],["International Falls, MN",6,"UM",66,48.6,-93.4],
+  ["Mitchell, SD",16,"UM",38,43.7,-98.0],["Pierre, SD",14,"UM",36,44.4,-100.4],["Minot, ND",48,"UM",43,48.2,-101.3],
+  ["Williston, ND",27,"UM",37,48.1,-103.6],["Dubuque, IA",59,"UM",42,42.5,-90.7],["Iowa City, IA",74,"UM",32,41.7,-91.5],
+  ["Ames, IA",66,"UM",34,42.0,-93.6],
   // ---- SOUTH ----
-  ["Dallas, TX",1304,"SO",2],["Houston, TX",2304,"SO",0.1],["San Antonio, TX",1434,"SO",0.5],
-  ["Austin, TX",979,"SO",0.7],["Memphis, TN",633,"SO",5],["Oklahoma City, OK",681,"SO",9],
-  ["Tulsa, OK",413,"SO",9],["Little Rock, AR",202,"SO",5],["New Orleans, LA",383,"SO",0.1],
-  ["Birmingham, AL",200,"SO",2],["Jackson, MS",154,"SO",1],["Shreveport, LA",188,"SO",2],
-  ["Fort Worth, TX",919,"SO",2],["El Paso, TX",678,"SO",5],["Amarillo, TX",200,"SO",18],
-  ["Lubbock, TX",264,"SO",9],["Waco, TX",139,"SO",1],["Montgomery, AL",200,"SO",0.5],
-  ["Mobile, AL",187,"SO",0.3],["Baton Rouge, LA",227,"SO",0.2],["Huntsville, AL",216,"SO",4],
-  ["Wichita, KS",397,"SO",15],["Topeka, KS",126,"SO",18],["Springfield, MO",169,"SO",17],
-  ["Kansas City, MO",508,"SO",18],["Joplin, MO",51,"SO",14],["Columbia, MO",122,"SO",17],
-  ["Fayetteville, AR",93,"SO",12],["Jonesboro, AR",78,"SO",7],["Cape Girardeau, MO",39,"SO",13],
-  ["Jefferson City, MO",43,"SO",16],["St. Joseph, MO",77,"SO",20],["Texarkana, TX",30,"SO",2],
-  ["Pine Bluff, AR",42,"SO",3],["Fort Smith, AR",89,"SO",7],["Abilene, TX",123,"SO",4],
-  ["Midland, TX",146,"SO",4],["Corpus Christi, TX",317,"SO",0.1],["Tyler, TX",107,"SO",2],
-  ["Lawton, OK",92,"SO",8],["Enid, OK",50,"SO",11],["Dodge City, KS",27,"SO",22],
-  ["Las Cruces, NM",115,"SO",3],["Del Rio, TX",36,"SO",1],["Wichita Falls, TX",105,"SO",5],["Galveston, TX",50,"SO",0],
+  ["Dallas, TX",1304,"SO",2,32.8,-96.8],["Houston, TX",2304,"SO",0.1,29.8,-95.4],["San Antonio, TX",1434,"SO",0.5,29.4,-98.5],
+  ["Austin, TX",979,"SO",0.7,30.3,-97.7],["Memphis, TN",633,"SO",5,35.1,-90.0],["Oklahoma City, OK",681,"SO",9,35.5,-97.5],
+  ["Tulsa, OK",413,"SO",9,36.2,-96.0],["Little Rock, AR",202,"SO",5,34.7,-92.3],["New Orleans, LA",383,"SO",0.1,30.0,-90.1],
+  ["Birmingham, AL",200,"SO",2,33.5,-86.8],["Jackson, MS",154,"SO",1,32.3,-90.2],["Shreveport, LA",188,"SO",2,32.5,-93.8],
+  ["Fort Worth, TX",919,"SO",2,32.7,-97.3],["El Paso, TX",678,"SO",5,31.8,-106.4],["Amarillo, TX",200,"SO",18,35.2,-101.8],
+  ["Lubbock, TX",264,"SO",9,33.6,-101.8],["Waco, TX",139,"SO",1,31.5,-97.1],["Montgomery, AL",200,"SO",0.5,32.4,-86.3],
+  ["Mobile, AL",187,"SO",0.3,30.7,-88.0],["Baton Rouge, LA",227,"SO",0.2,30.5,-91.1],["Huntsville, AL",216,"SO",4,34.7,-86.6],
+  ["Wichita, KS",397,"SO",15,37.7,-97.3],["Topeka, KS",126,"SO",18,39.1,-95.7],["Springfield, MO",169,"SO",17,37.2,-93.3],
+  ["Kansas City, MO",508,"SO",18,39.1,-94.6],["Joplin, MO",51,"SO",14,37.1,-94.5],["Columbia, MO",122,"SO",17,38.9,-92.3],
+  ["Fayetteville, AR",93,"SO",12,36.1,-94.2],["Jonesboro, AR",78,"SO",7,35.8,-90.7],["Cape Girardeau, MO",39,"SO",13,37.3,-89.5],
+  ["Jefferson City, MO",43,"SO",16,38.6,-92.2],["St. Joseph, MO",77,"SO",20,39.8,-94.8],["Texarkana, TX",30,"SO",2,33.4,-94.0],
+  ["Pine Bluff, AR",42,"SO",3,34.2,-92.0],["Fort Smith, AR",89,"SO",7,35.4,-94.4],["Abilene, TX",123,"SO",4,32.4,-99.7],
+  ["Midland, TX",146,"SO",4,32.0,-102.1],["Corpus Christi, TX",317,"SO",0.1,27.8,-97.4],["Tyler, TX",107,"SO",2,32.4,-95.3],
+  ["Lawton, OK",92,"SO",8,34.6,-98.4],["Enid, OK",50,"SO",11,36.4,-97.9],["Dodge City, KS",27,"SO",22,37.8,-100.0],
+  ["Las Cruces, NM",115,"SO",3,32.3,-106.7],["Del Rio, TX",36,"SO",1,29.4,-100.9],["Wichita Falls, TX",105,"SO",5,33.9,-98.5],["Galveston, TX",50,"SO",0,29.3,-94.8],
   // ---- NORTHERN ROCKIES & PLAINS ----
-  ["Denver, CO",716,"NR",57],["Salt Lake City, UT",200,"NR",54],["Boise, ID",236,"NR",19],
-  ["Billings, MT",117,"NR",57],["Cheyenne, WY",65,"NR",60],["Missoula, MT",74,"NR",47],
-  ["Great Falls, MT",59,"NR",64],["Casper, WY",58,"NR",77],["Helena, MT",33,"NR",47],
-  ["Pocatello, ID",56,"NR",48],["Idaho Falls, ID",64,"NR",38],["Colorado Springs, CO",479,"NR",45],
-  ["Fort Collins, CO",169,"NR",52],["Boulder, CO",105,"NR",77],["Pueblo, CO",112,"NR",32],
-  ["Provo, UT",115,"NR",58],["Ogden, UT",87,"NR",56],["Laramie, WY",32,"NR",51],
-  ["Twin Falls, ID",50,"NR",23],["Logan, UT",52,"NR",52],["Bozeman, MT",53,"NR",76],
-  ["Butte, MT",34,"NR",82],["Kalispell, MT",25,"NR",60],["Sheridan, WY",18,"NR",66],
-  ["Rock Springs, WY",23,"NR",50],["Durango, CO",19,"NR",70],
+  ["Denver, CO",716,"NR",57,39.7,-105.0],["Salt Lake City, UT",200,"NR",54,40.8,-111.9],["Boise, ID",236,"NR",19,43.6,-116.2],
+  ["Billings, MT",117,"NR",57,45.8,-108.5],["Cheyenne, WY",65,"NR",60,41.1,-104.8],["Missoula, MT",74,"NR",47,46.9,-114.0],
+  ["Great Falls, MT",59,"NR",64,47.5,-111.3],["Casper, WY",58,"NR",77,42.9,-106.3],["Helena, MT",33,"NR",47,46.6,-112.0],
+  ["Pocatello, ID",56,"NR",48,42.9,-112.4],["Idaho Falls, ID",64,"NR",38,43.5,-112.0],["Colorado Springs, CO",479,"NR",45,38.8,-104.8],
+  ["Fort Collins, CO",169,"NR",52,40.6,-105.1],["Boulder, CO",105,"NR",77,40.0,-105.3],["Pueblo, CO",112,"NR",32,38.3,-104.6],
+  ["Provo, UT",115,"NR",58,40.2,-111.7],["Ogden, UT",87,"NR",56,41.2,-111.97],["Laramie, WY",32,"NR",51,41.3,-105.6],
+  ["Twin Falls, ID",50,"NR",23,42.6,-114.5],["Logan, UT",52,"NR",52,41.7,-111.8],["Bozeman, MT",53,"NR",76,45.7,-111.0],
+  ["Butte, MT",34,"NR",82,46.0,-112.5],["Kalispell, MT",25,"NR",60,48.2,-114.3],["Sheridan, WY",18,"NR",66,44.8,-106.96],
+  ["Rock Springs, WY",23,"NR",50,41.6,-109.2],["Durango, CO",19,"NR",70,37.3,-107.9],
   // ---- WESTERN U.S. (not in RSI) ----
-  ["Seattle, WA",737,null,5],["Portland, OR",653,null,4],["San Francisco, CA",874,null,0],
-  ["Los Angeles, CA",3898,null,0],["San Diego, CA",1387,null,0],["Sacramento, CA",525,null,0.1],
-  ["Las Vegas, NV",646,null,1],["Phoenix, AZ",1608,null,0],["Tucson, AZ",543,null,1],
-  ["Albuquerque, NM",564,null,11],["Santa Fe, NM",88,null,29],["Reno, NV",265,null,22],
-  ["Spokane, WA",222,null,44],["Anchorage, AK",291,null,74],["Fairbanks, AK",32,null,60],
-  ["Juneau, AK",32,null,90],["Eugene, OR",172,null,3],["Medford, OR",83,null,4],
-  ["Bend, OR",100,null,33],["Flagstaff, AZ",73,null,96],["Fresno, CA",542,null,0],
-  ["Bakersfield, CA",403,null,0],["Redding, CA",92,null,2],["Yakima, WA",93,null,22],
-  ["Olympia, WA",55,null,10],["Bellingham, WA",92,null,11],["Elko, NV",20,null,34],
-  ["Mammoth Lakes, CA",8,null,200],["Tahoe City, CA",10,null,193],
-  ["Honolulu, HI",350,null,0],["Hilo, HI",46,null,0],
+  ["Seattle, WA",737,null,5,47.6,-122.3],["Portland, OR",653,null,4,45.5,-122.7],["San Francisco, CA",874,null,0,37.8,-122.4],
+  ["Los Angeles, CA",3898,null,0,34.1,-118.2],["San Diego, CA",1387,null,0,32.7,-117.2],["Sacramento, CA",525,null,0.1,38.6,-121.5],
+  ["Las Vegas, NV",646,null,1,36.2,-115.1],["Phoenix, AZ",1608,null,0,33.4,-112.1],["Tucson, AZ",543,null,1,32.2,-110.9],
+  ["Albuquerque, NM",564,null,11,35.1,-106.6],["Santa Fe, NM",88,null,29,35.7,-105.9],["Reno, NV",265,null,22,39.5,-119.8],
+  ["Spokane, WA",222,null,44,47.7,-117.4],["Anchorage, AK",291,null,74,61.2,-149.9],["Fairbanks, AK",32,null,60,64.8,-147.7],
+  ["Juneau, AK",32,null,90,58.3,-134.4],["Eugene, OR",172,null,3,44.1,-123.1],["Medford, OR",83,null,4,42.3,-122.9],
+  ["Bend, OR",100,null,33,44.1,-121.3],["Flagstaff, AZ",73,null,96,35.2,-111.6],["Fresno, CA",542,null,0,36.7,-119.8],
+  ["Bakersfield, CA",403,null,0,35.4,-119.0],["Redding, CA",92,null,2,40.6,-122.4],["Yakima, WA",93,null,22,46.6,-120.5],
+  ["Olympia, WA",55,null,10,47.0,-122.9],["Bellingham, WA",92,null,11,48.8,-122.5],["Elko, NV",20,null,34,40.8,-115.8],
+  ["Mammoth Lakes, CA",8,null,200,37.6,-119.0],["Tahoe City, CA",10,null,193,39.2,-120.1],
+  ["Honolulu, HI",350,null,0,21.3,-157.8],["Hilo, HI",46,null,0,19.7,-155.1],
   // ---- CANADA ----
-  ["Toronto, ON, Canada",2794,null,48],["Montreal, QC, Canada",1763,null,82],
-  ["Vancouver, BC, Canada",662,null,15],["Calgary, AB, Canada",1336,null,50],
-  ["Edmonton, AB, Canada",1010,null,49],["Ottawa, ON, Canada",1017,null,69],
-  ["Winnipeg, MB, Canada",778,null,44],["Quebec City, QC, Canada",549,null,119],
-  ["Halifax, NS, Canada",431,null,61],["St. John's, NL, Canada",110,null,132],
-  ["Regina, SK, Canada",228,null,42],["Saskatoon, SK, Canada",317,null,40],
-  ["Victoria, BC, Canada",397,null,10],["Hamilton, ON, Canada",569,null,49],
-  ["London, ON, Canada",404,null,67],["Kitchener, ON, Canada",575,null,55],
-  ["Thunder Bay, ON, Canada",121,null,73],["Sudbury, ON, Canada",166,null,100],
-  ["Fredericton, NB, Canada",107,null,86],["Charlottetown, PE, Canada",76,null,80],
-  ["Whitehorse, YT, Canada",28,null,57],["Yellowknife, NT, Canada",20,null,58],
-  ["Moncton, NB, Canada",145,null,97],["Saint John, NB, Canada",68,null,88],
-  ["Kelowna, BC, Canada",222,null,34],["Prince George, BC, Canada",86,null,65],
-  ["Lethbridge, AB, Canada",117,null,42],["Brandon, MB, Canada",49,null,42],
-  ["Sault Ste. Marie, ON, Canada",73,null,124],["Corner Brook, NL, Canada",20,null,128],
+  ["Toronto, ON, Canada",2794,null,48,43.7,-79.4],["Montreal, QC, Canada",1763,null,82,45.5,-73.6],
+  ["Vancouver, BC, Canada",662,null,15,49.3,-123.1],["Calgary, AB, Canada",1336,null,50,51.0,-114.1],
+  ["Edmonton, AB, Canada",1010,null,49,53.5,-113.5],["Ottawa, ON, Canada",1017,null,69,45.4,-75.7],
+  ["Winnipeg, MB, Canada",778,null,44,49.9,-97.1],["Quebec City, QC, Canada",549,null,119,46.8,-71.2],
+  ["Halifax, NS, Canada",431,null,61,44.6,-63.6],["St. John's, NL, Canada",110,null,132,47.6,-52.7],
+  ["Regina, SK, Canada",228,null,42,50.4,-104.6],["Saskatoon, SK, Canada",317,null,40,52.1,-106.7],
+  ["Victoria, BC, Canada",397,null,10,48.4,-123.4],["Hamilton, ON, Canada",569,null,49,43.3,-79.8],
+  ["London, ON, Canada",404,null,67,43.0,-81.2],["Kitchener, ON, Canada",575,null,55,43.5,-80.5],
+  ["Thunder Bay, ON, Canada",121,null,73,48.4,-89.2],["Sudbury, ON, Canada",166,null,100,46.5,-81.0],
+  ["Fredericton, NB, Canada",107,null,86,45.9,-66.6],["Charlottetown, PE, Canada",76,null,80,46.2,-63.1],
+  ["Whitehorse, YT, Canada",28,null,57,60.7,-135.1],["Yellowknife, NT, Canada",20,null,58,62.5,-114.4],
+  ["Moncton, NB, Canada",145,null,97,46.1,-64.8],["Saint John, NB, Canada",68,null,88,45.3,-66.1],
+  ["Kelowna, BC, Canada",222,null,34,49.9,-119.5],["Prince George, BC, Canada",86,null,65,53.9,-122.8],
+  ["Lethbridge, AB, Canada",117,null,42,49.7,-112.8],["Brandon, MB, Canada",49,null,42,49.8,-99.9],
+  ["Sault Ste. Marie, ON, Canada",73,null,124,46.5,-84.3],["Corner Brook, NL, Canada",20,null,128,48.9,-57.9],
   // ---- MEXICO ----
-  ["Mexico City, Mexico",9209,null,0],["Monterrey, Mexico",5341,null,0],
-  ["Chihuahua, Mexico",925,null,3],["Ciudad Juarez, Mexico",1512,null,4],
-  ["Saltillo, Mexico",823,null,2],["Durango, Mexico",688,null,2],["Toluca, Mexico",489,null,3],
-  ["Piedras Negras, Mexico",160,null,1],["Nuevo Laredo, Mexico",250,null,0.5],["Matamoros, Mexico",526,null,0.1],
+  ["Mexico City, Mexico",9209,null,0,19.4,-99.1],["Monterrey, Mexico",5341,null,0,25.7,-100.3],
+  ["Chihuahua, Mexico",925,null,3,28.6,-106.1],["Ciudad Juarez, Mexico",1512,null,4,31.7,-106.4],
+  ["Saltillo, Mexico",823,null,2,25.4,-101.0],["Durango, Mexico",688,null,2,24.0,-104.7],["Toluca, Mexico",489,null,3,19.3,-99.7],
+  ["Piedras Negras, Mexico",160,null,1,28.7,-100.5],["Nuevo Laredo, Mexico",250,null,0.5,27.5,-99.5],["Matamoros, Mexico",526,null,0.1,25.9,-97.5],
   // ---- ICELAND ----
-  ["Reykjavik, Iceland",131,null,60],["Akureyri, Iceland",19,null,78],
+  ["Reykjavik, Iceland",131,null,60,64.1,-21.9],["Akureyri, Iceland",19,null,78,65.7,-18.1],
   // ---- CARIBBEAN / ATLANTIC ----
-  ["Havana, Cuba",2130,null,0],["Bermuda, UK",65,null,0],["Freeport, Bahamas",27,null,0],["Nassau, Bahamas",207,null,0],
+  ["Havana, Cuba",2130,null,0,23.1,-82.4],["Bermuda, UK",65,null,0,32.3,-64.8],["Freeport, Bahamas",27,null,0,26.5,-78.7],["Nassau, Bahamas",207,null,0,25.0,-77.4],
   // ---- IRELAND ----
-  ["Dublin, Ireland",1228,null,6],["Cork, Ireland",210,null,6],
-  ["Galway, Ireland",80,null,8],["Limerick, Ireland",95,null,5],
+  ["Dublin, Ireland",1228,null,6,53.3,-6.3],["Cork, Ireland",210,null,6,51.9,-8.5],
+  ["Galway, Ireland",80,null,8,53.3,-9.1],["Limerick, Ireland",95,null,5,52.7,-8.6],
   // ---- UNITED KINGDOM ----
-  ["London, England",8982,null,6],["Manchester, England",553,null,10],
-  ["Birmingham, England",1141,null,8],["Leeds, England",793,null,12],
-  ["Edinburgh, Scotland",527,null,16],["Glasgow, Scotland",633,null,14],
-  ["Bristol, England",463,null,5],["Liverpool, England",496,null,8],
-  ["Newcastle, England",300,null,15],["Cardiff, Wales",362,null,6],
-  ["Sheffield, England",584,null,12],["Aberdeen, Scotland",228,null,20],
-  ["Inverness, Scotland",49,null,19],["Belfast, N. Ireland",343,null,10],
+  ["London, England",8982,null,6,51.5,-0.1],["Manchester, England",553,null,10,53.5,-2.2],
+  ["Birmingham, England",1141,null,8,52.5,-1.9],["Leeds, England",793,null,12,53.8,-1.5],
+  ["Edinburgh, Scotland",527,null,16,55.95,-3.2],["Glasgow, Scotland",633,null,14,55.9,-4.3],
+  ["Bristol, England",463,null,5,51.5,-2.6],["Liverpool, England",496,null,8,53.4,-3.0],
+  ["Newcastle, England",300,null,15,55.0,-1.6],["Cardiff, Wales",362,null,6,51.5,-3.2],
+  ["Sheffield, England",584,null,12,53.4,-1.5],["Aberdeen, Scotland",228,null,20,57.1,-2.1],
+  ["Inverness, Scotland",49,null,19,57.5,-4.2],["Belfast, N. Ireland",343,null,10,54.6,-5.9],
   // ---- FRANCE ----
-  ["Paris, France",2161,null,6],["Lyon, France",513,null,10],["Marseille, France",870,null,1],
-  ["Strasbourg, France",280,null,14],["Grenoble, France",160,null,25],
+  ["Paris, France",2161,null,6,48.9,2.3],["Lyon, France",513,null,10,45.8,4.8],["Marseille, France",870,null,1,43.3,5.4],
+  ["Strasbourg, France",280,null,14,48.6,7.8],["Grenoble, France",160,null,25,45.2,5.7],
   // ---- GERMANY ----
-  ["Berlin, Germany",3645,null,15],["Munich, Germany",1472,null,28],
-  ["Hamburg, Germany",1841,null,14],["Frankfurt, Germany",753,null,14],
-  ["Stuttgart, Germany",635,null,16],["Cologne, Germany",1086,null,10],
+  ["Berlin, Germany",3645,null,15,52.5,13.4],["Munich, Germany",1472,null,28,48.1,11.6],
+  ["Hamburg, Germany",1841,null,14,53.6,10.0],["Frankfurt, Germany",753,null,14,50.1,8.7],
+  ["Stuttgart, Germany",635,null,16,48.8,9.2],["Cologne, Germany",1086,null,10,50.9,6.96],
   // ---- BENELUX ----
-  ["Amsterdam, Netherlands",873,null,8],["Brussels, Belgium",1209,null,10],
-  ["Rotterdam, Netherlands",651,null,8],
+  ["Amsterdam, Netherlands",873,null,8,52.4,4.9],["Brussels, Belgium",1209,null,10,50.8,4.4],
+  ["Rotterdam, Netherlands",651,null,8,51.9,4.5],
   // ---- SWITZERLAND / AUSTRIA ----
-  ["Zurich, Switzerland",415,null,26],["Geneva, Switzerland",203,null,12],
-  ["Bern, Switzerland",133,null,28],["Vienna, Austria",1897,null,18],
-  ["Innsbruck, Austria",131,null,52],["Salzburg, Austria",155,null,40],
+  ["Zurich, Switzerland",415,null,26,47.4,8.5],["Geneva, Switzerland",203,null,12,46.2,6.1],
+  ["Bern, Switzerland",133,null,28,46.9,7.4],["Vienna, Austria",1897,null,18,48.2,16.4],
+  ["Innsbruck, Austria",131,null,52,47.3,11.4],["Salzburg, Austria",155,null,40,47.8,13.0],
   // ---- CENTRAL / EASTERN EUROPE ----
-  ["Prague, Czech Republic",1309,null,16],["Warsaw, Poland",1783,null,18],
-  ["Krakow, Poland",779,null,20],["Budapest, Hungary",1752,null,14],
-  ["Bucharest, Romania",1883,null,15],["Kyiv, Ukraine",2962,null,22],
+  ["Prague, Czech Republic",1309,null,16,50.1,14.4],["Warsaw, Poland",1783,null,18,52.2,21.0],
+  ["Krakow, Poland",779,null,20,50.1,19.9],["Budapest, Hungary",1752,null,14,47.5,19.0],
+  ["Bucharest, Romania",1883,null,15,44.4,26.1],["Kyiv, Ukraine",2962,null,22,50.5,30.5],
   // ---- NORDICS ----
-  ["Stockholm, Sweden",975,null,25],["Oslo, Norway",1043,null,28],
-  ["Helsinki, Finland",655,null,30],["Copenhagen, Denmark",1336,null,12],
-  ["Bergen, Norway",283,null,14],["Tromso, Norway",77,null,67],
-  ["Tampere, Finland",341,null,35],["Turku, Finland",192,null,28],
-  ["Rovaniemi, Finland",63,null,55],["Oulu, Finland",207,null,42],
+  ["Stockholm, Sweden",975,null,25,59.3,18.1],["Oslo, Norway",1043,null,28,59.9,10.8],
+  ["Helsinki, Finland",655,null,30,60.2,24.9],["Copenhagen, Denmark",1336,null,12,55.7,12.6],
+  ["Bergen, Norway",283,null,14,60.4,5.3],["Tromso, Norway",77,null,67,69.6,19.0],
+  ["Tampere, Finland",341,null,35,61.5,23.8],["Turku, Finland",192,null,28,60.5,22.3],
+  ["Rovaniemi, Finland",63,null,55,66.5,25.7],["Oulu, Finland",207,null,42,65.0,25.5],
   // ---- RUSSIA ----
-  ["Moscow, Russia",12506,null,56],["St. Petersburg, Russia",5384,null,50],
-  ["Novosibirsk, Russia",1625,null,52],["Murmansk, Russia",292,null,60],
-  ["Yakutsk, Russia",319,null,54],
+  ["Moscow, Russia",12506,null,56,55.8,37.6],["St. Petersburg, Russia",5384,null,50,59.9,30.3],
+  ["Novosibirsk, Russia",1625,null,52,55.0,82.9],["Murmansk, Russia",292,null,60,68.97,33.1],
+  ["Yakutsk, Russia",319,null,54,62.0,129.7],
   // ---- ASIA ----
-  ["Tokyo, Japan",13960,null,6],["Sapporo, Japan",1970,null,190],
-  ["Seoul, South Korea",9776,null,11],["Beijing, China",21540,null,10],
-  ["Harbin, China",10015,null,42],["Ulaanbaatar, Mongolia",1540,null,32],
-  ["Shenyang, China",9070,null,22],["Almaty, Kazakhstan",1978,null,32],
+  ["Tokyo, Japan",13960,null,6,35.7,139.7],["Sapporo, Japan",1970,null,190,43.1,141.3],
+  ["Seoul, South Korea",9776,null,11,37.6,127.0],["Beijing, China",21540,null,10,39.9,116.4],
+  ["Harbin, China",10015,null,42,45.8,126.7],["Ulaanbaatar, Mongolia",1540,null,32,47.9,106.9],
+  ["Shenyang, China",9070,null,22,41.8,123.4],["Almaty, Kazakhstan",1978,null,32,43.2,76.9],
   // ---- SPAIN / ITALY / PORTUGAL ----
-  ["Madrid, Spain",3223,null,5],["Barcelona, Spain",1621,null,0.5],
-  ["Rome, Italy",2873,null,1],["Milan, Italy",1352,null,12],["Turin, Italy",870,null,18],
-  ["Lisbon, Portugal",505,null,0],
+  ["Madrid, Spain",3223,null,5,40.4,-3.7],["Barcelona, Spain",1621,null,0.5,41.4,2.2],
+  ["Rome, Italy",2873,null,1,41.9,12.5],["Milan, Italy",1352,null,12,45.5,9.2],["Turin, Italy",870,null,18,45.1,7.7],
+  ["Lisbon, Portugal",505,null,0,38.7,-9.1],
   // ---- OTHER ----
-  ["Ankara, Turkey",5663,null,18],["Tehran, Iran",9000,null,14],
-  ["Tbilisi, Georgia",1118,null,10],["Yerevan, Armenia",1075,null,14],
+  ["Ankara, Turkey",5663,null,18,39.9,32.9],["Tehran, Iran",9000,null,14,35.7,51.4],
+  ["Tbilisi, Georgia",1118,null,10,41.7,44.8],["Yerevan, Armenia",1075,null,14,40.2,44.5],
 ];
 
-const CITY_DB = RAW_CITIES.map(c => ({ n: c[0], pop: c[1], r: c[2], snow: c[3] }));
+const CITY_DB = RAW_CITIES.map(c => ({ n: c[0], pop: c[1], r: c[2], snow: c[3], lat: c[4], lon: c[5] }));
+
+/* ---- Storm Direction Constants ---- */
+const STORM_DIRECTIONS = [
+  { code: 'SW_NE', label: 'SW \u2192 NE (most common)', vector: [1, 1] },
+  { code: 'W_E',   label: 'W \u2192 E (clipper track)', vector: [1, 0] },
+  { code: 'NW_SE', label: 'NW \u2192 SE (Alberta clipper)', vector: [1, -1] },
+  { code: 'S_N',   label: 'S \u2192 N (Gulf surge)', vector: [0, 1] },
+  { code: 'N_S',   label: 'N \u2192 S (arctic front)', vector: [0, -1] },
+  { code: 'SE_NW', label: 'SE \u2192 NW (backdoor cold)', vector: [-1, 1] },
+  { code: 'NE_SW', label: 'NE \u2192 SW (retrograde)', vector: [-1, -1] },
+  { code: 'E_W',   label: 'E \u2192 W (coastal inland)', vector: [-1, 0] },
+];
 
 /* ======================================================================
    RSI CONSTANTS — Squires et al. 2014 (BAMS)
@@ -1233,7 +1277,7 @@ function generateProfile() {
 
 /* ---- Random Storm Generator ---- */
 const STORM_TEMPLATES = [
-  { type:"Northeast Nor'easter", regions:['NE'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.7}, precipMix:[
+  { type:"Northeast Nor'easter", regions:['NE'], typicalDirections:['SW_NE','S_N'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.7}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:5 },
     { phases:[{type:'snow',pct:0.8},{type:'rain',pct:0.2}], weight:2 },
     { phases:[{type:'rain',pct:0.1},{type:'snow',pct:0.8},{type:'rain',pct:0.1}], weight:1 },
@@ -1245,7 +1289,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[16,26], fringe:[5,12],   cityCount:[9,17],  coldChance:0.55, coldRange:[-8,12] },
     { label:'Extreme',     centerSnow:[24,36], fringe:[8,18],   cityCount:[13,22], coldChance:0.7,  coldRange:[-20,5] },
   ]},
-  { type:'Deep South Ice Storm', regions:['SO','SE'], windProfile:{base:[5,15],severe:[10,30],gustAdd:[10,20],chance:0.5}, precipMix:[
+  { type:'Deep South Ice Storm', regions:['SO','SE'], typicalDirections:['N_S','NW_SE'], windProfile:{base:[5,15],severe:[10,30],gustAdd:[10,20],chance:0.5}, precipMix:[
     { phases:[{type:'snow',pct:0.2},{type:'ice',pct:0.5},{type:'rain',pct:0.3}], weight:3 },
     { phases:[{type:'ice',pct:0.6},{type:'rain',pct:0.4}], weight:3 },
     { phases:[{type:'sleet',pct:0.3},{type:'ice',pct:0.5},{type:'rain',pct:0.2}], weight:2 },
@@ -1257,7 +1301,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[4,10],  fringe:[1,4],    cityCount:[12,20], coldChance:0.9,  coldRange:[-10,15] },
     { label:'Extreme',     centerSnow:[6,15],  fringe:[2,6],    cityCount:[16,26], coldChance:0.95, coldRange:[-15,5] },
   ]},
-  { type:'Midwest Blizzard', regions:['UM','OV'], windProfile:{base:[15,35],severe:[30,55],gustAdd:[10,30],chance:0.8}, precipMix:[
+  { type:'Midwest Blizzard', regions:['UM','OV'], typicalDirections:['NW_SE','W_E'], windProfile:{base:[15,35],severe:[30,55],gustAdd:[10,30],chance:0.8}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:7 },
     { phases:[{type:'snow',pct:0.9},{type:'sleet',pct:0.1}], weight:2 },
     { phases:[{type:'sleet',pct:0.1},{type:'snow',pct:0.9}], weight:1 },
@@ -1268,7 +1312,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[16,26], fringe:[5,12],   cityCount:[12,20], coldChance:0.75, coldRange:[-25,0] },
     { label:'Extreme',     centerSnow:[22,36], fringe:[8,16],   cityCount:[16,26], coldChance:0.85, coldRange:[-35,-10] },
   ]},
-  { type:'Ohio Valley Wallop', regions:['OV'], windProfile:{base:[8,20],severe:[20,40],gustAdd:[10,20],chance:0.6}, precipMix:[
+  { type:'Ohio Valley Wallop', regions:['OV'], typicalDirections:['SW_NE','W_E'], windProfile:{base:[8,20],severe:[20,40],gustAdd:[10,20],chance:0.6}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:4 },
     { phases:[{type:'snow',pct:0.7},{type:'sleet',pct:0.2},{type:'rain',pct:0.1}], weight:2 },
     { phases:[{type:'snow',pct:0.8},{type:'ice',pct:0.1},{type:'rain',pct:0.1}], weight:2 },
@@ -1280,7 +1324,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[14,22], fringe:[5,10],   cityCount:[8,14],  coldChance:0.5,  coldRange:[-10,10] },
     { label:'Extreme',     centerSnow:[20,30], fringe:[8,16],   cityCount:[10,18], coldChance:0.65, coldRange:[-20,0] },
   ]},
-  { type:'Southern Snowpocalypse', regions:['SO'], windProfile:{base:[5,15],severe:[15,35],gustAdd:[10,20],chance:0.5}, precipMix:[
+  { type:'Southern Snowpocalypse', regions:['SO'], typicalDirections:['N_S','NW_SE'], windProfile:{base:[5,15],severe:[15,35],gustAdd:[10,20],chance:0.5}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:3 },
     { phases:[{type:'snow',pct:0.6},{type:'sleet',pct:0.2},{type:'rain',pct:0.2}], weight:3 },
     { phases:[{type:'snow',pct:0.5},{type:'ice',pct:0.3},{type:'rain',pct:0.2}], weight:2 },
@@ -1292,7 +1336,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[8,16],  fringe:[2,7],    cityCount:[14,22], coldChance:0.65, coldRange:[-5,15] },
     { label:'Extreme',     centerSnow:[14,24], fringe:[4,10],   cityCount:[18,30], coldChance:0.8,  coldRange:[-15,5] },
   ]},
-  { type:'Gulf Coast Freeze', regions:['SO','SE'], windProfile:{base:[5,15],severe:[10,25],gustAdd:[5,15],chance:0.4}, precipMix:[
+  { type:'Gulf Coast Freeze', regions:['SO','SE'], typicalDirections:['N_S','NW_SE'], windProfile:{base:[5,15],severe:[10,25],gustAdd:[5,15],chance:0.4}, precipMix:[
     { phases:[{type:'ice',pct:0.6},{type:'rain',pct:0.4}], weight:4 },
     { phases:[{type:'sleet',pct:0.3},{type:'ice',pct:0.4},{type:'rain',pct:0.3}], weight:3 },
     { phases:[{type:'ice',pct:0.8},{type:'sleet',pct:0.2}], weight:2 },
@@ -1304,7 +1348,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[0.5,3], fringe:[0,1],    cityCount:[8,16],  coldChance:0.95, coldRange:[-5,15] },
     { label:'Extreme',     centerSnow:[1,5],   fringe:[0,2],    cityCount:[12,20], coldChance:0.98, coldRange:[-15,5] },
   ]},
-  { type:'Southeast Surprise', regions:['SE'], windProfile:{base:[5,15],severe:[15,30],gustAdd:[10,20],chance:0.4}, precipMix:[
+  { type:'Southeast Surprise', regions:['SE'], typicalDirections:['SW_NE','W_E'], windProfile:{base:[5,15],severe:[15,30],gustAdd:[10,20],chance:0.4}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:3 },
     { phases:[{type:'snow',pct:0.6},{type:'rain',pct:0.4}], weight:3 },
     { phases:[{type:'snow',pct:0.5},{type:'sleet',pct:0.3},{type:'rain',pct:0.2}], weight:2 },
@@ -1316,7 +1360,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[8,16],  fringe:[3,7],    cityCount:[9,16],  coldChance:0.5,  coldRange:[-2,15] },
     { label:'Extreme',     centerSnow:[14,24], fringe:[5,12],   cityCount:[12,20], coldChance:0.65, coldRange:[-10,8] },
   ]},
-  { type:'Northern Rockies Dump', regions:['NR'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.6}, precipMix:[
+  { type:'Northern Rockies Dump', regions:['NR'], typicalDirections:['W_E','NW_SE'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.6}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:8 },
     { phases:[{type:'snow',pct:0.95},{type:'sleet',pct:0.05}], weight:1 },
   ], severities:[
@@ -1326,7 +1370,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[20,32], fringe:[6,14],   cityCount:[6,11],  coldChance:0.65, coldRange:[-25,0] },
     { label:'Extreme',     centerSnow:[28,48], fringe:[10,20],  cityCount:[8,14],  coldChance:0.8,  coldRange:[-35,-10] },
   ]},
-  { type:'Clipper System', regions:['UM','OV','NE'], windProfile:{base:[10,25],severe:[20,40],gustAdd:[10,20],chance:0.6}, precipMix:[
+  { type:'Clipper System', regions:['UM','OV','NE'], typicalDirections:['W_E','NW_SE'], windProfile:{base:[10,25],severe:[20,40],gustAdd:[10,20],chance:0.6}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:6 },
     { phases:[{type:'snow',pct:0.85},{type:'sleet',pct:0.15}], weight:2 },
     { phases:[{type:'snow',pct:0.7},{type:'rain',pct:0.3}], weight:1 },
@@ -1337,7 +1381,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[6,12],  fringe:[2,5],    cityCount:[12,20], coldChance:0.45, coldRange:[-10,10] },
     { label:'Extreme',     centerSnow:[10,18], fringe:[3,8],    cityCount:[16,26], coldChance:0.6,  coldRange:[-20,0] },
   ]},
-  { type:'Historic East Coast Storm', regions:['NE','SE','OV'], windProfile:{base:[15,30],severe:[30,55],gustAdd:[10,30],chance:0.75}, precipMix:[
+  { type:'Historic East Coast Storm', regions:['NE','SE','OV'], typicalDirections:['SW_NE','S_N'], windProfile:{base:[15,30],severe:[30,55],gustAdd:[10,30],chance:0.75}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:4 },
     { phases:[{type:'snow',pct:0.75},{type:'sleet',pct:0.15},{type:'rain',pct:0.1}], weight:2 },
     { phases:[{type:'rain',pct:0.05},{type:'snow',pct:0.85},{type:'rain',pct:0.1}], weight:2 },
@@ -1349,7 +1393,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[20,30], fringe:[6,14],   cityCount:[18,28], coldChance:0.6,  coldRange:[-10,10] },
     { label:'Extreme',     centerSnow:[26,40], fringe:[10,20],  cityCount:[22,36], coldChance:0.75, coldRange:[-20,0] },
   ]},
-  { type:'Polar Vortex Outbreak', regions:['UM','OV','SO','NE'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.7}, precipMix:[
+  { type:'Polar Vortex Outbreak', regions:['UM','OV','SO','NE'], typicalDirections:['N_S','NW_SE'], windProfile:{base:[10,25],severe:[25,50],gustAdd:[10,25],chance:0.7}, precipMix:[
     { phases:[{type:'snow',pct:0.7},{type:'ice',pct:0.2},{type:'sleet',pct:0.1}], weight:3 },
     { phases:[{type:'snow',pct:1.0}], weight:3 },
     { phases:[{type:'ice',pct:0.4},{type:'snow',pct:0.4},{type:'sleet',pct:0.2}], weight:2 },
@@ -1361,7 +1405,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[6,14],  fringe:[1,5],    cityCount:[16,26], coldChance:0.92, coldRange:[-30,-8] },
     { label:'Extreme',     centerSnow:[10,20], fringe:[2,8],    cityCount:[22,34], coldChance:0.97, coldRange:[-45,-15] },
   ]},
-  { type:'Texas Winter Emergency', regions:['SO'], windProfile:{base:[5,15],severe:[15,35],gustAdd:[10,20],chance:0.5}, precipMix:[
+  { type:'Texas Winter Emergency', regions:['SO'], typicalDirections:['N_S','NW_SE'], windProfile:{base:[5,15],severe:[15,35],gustAdd:[10,20],chance:0.5}, precipMix:[
     { phases:[{type:'ice',pct:0.5},{type:'rain',pct:0.3},{type:'sleet',pct:0.2}], weight:3 },
     { phases:[{type:'snow',pct:0.3},{type:'ice',pct:0.5},{type:'rain',pct:0.2}], weight:3 },
     { phases:[{type:'ice',pct:0.7},{type:'rain',pct:0.3}], weight:2 },
@@ -1373,7 +1417,7 @@ const STORM_TEMPLATES = [
     { label:'Major',       centerSnow:[5,12],  fringe:[1,5],    cityCount:[10,18], coldChance:0.9,  coldRange:[-15,8] },
     { label:'Extreme',     centerSnow:[8,18],  fringe:[2,8],    cityCount:[14,22], coldChance:0.95, coldRange:[-25,0] },
   ]},
-  { type:'Flurry Dud', regions:'weighted-single', windProfile:{base:[0,10],severe:[5,15],gustAdd:[0,10],chance:0.2}, precipMix:[
+  { type:'Flurry Dud', regions:'weighted-single', typicalDirections:['W_E','NW_SE','SW_NE'], windProfile:{base:[0,10],severe:[5,15],gustAdd:[0,10],chance:0.2}, precipMix:[
     { phases:[{type:'snow',pct:1.0}], weight:8 },
     { phases:[{type:'snow',pct:0.8},{type:'rain',pct:0.2}], weight:2 },
   ], severities:[
@@ -1383,7 +1427,7 @@ const STORM_TEMPLATES = [
     { label:'Flurry Dud', centerSnow:[0.5,1.5], fringe:[0,0.5],  cityCount:[2,3],   coldChance:0.08, coldRange:[22,30] },
     { label:'Flurry Dud', centerSnow:[0.5,2],   fringe:[0,0.5],  cityCount:[2,4],   coldChance:0.1,  coldRange:[20,30] },
   ]},
-  { type:'Omega Continental Blizzard Outbreak', regions:'all-continental', windProfile:{base:[25,50],severe:[45,80],gustAdd:[15,35],chance:0.9}, precipMix:[
+  { type:'Omega Continental Blizzard Outbreak', regions:'all-continental', typicalDirections:['W_E','SW_NE'], windProfile:{base:[25,50],severe:[45,80],gustAdd:[15,35],chance:0.9}, precipMix:[
     { phases:[{type:'snow',pct:0.8},{type:'ice',pct:0.1},{type:'sleet',pct:0.1}], weight:4 },
     { phases:[{type:'snow',pct:1.0}], weight:3 },
     { phases:[{type:'ice',pct:0.2},{type:'snow',pct:0.6},{type:'ice',pct:0.2}], weight:2 },
@@ -1407,6 +1451,20 @@ STORM_TEMPLATES.forEach((t, i) => {
   opt.value = i;
   opt.textContent = t.type;
   stormTypeSelect.appendChild(opt);
+});
+
+// Populate storm direction dropdown
+const stormDirSelect = document.getElementById('stormDirection');
+STORM_DIRECTIONS.forEach((d, i) => {
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = d.label;
+  stormDirSelect.appendChild(opt);
+});
+
+// Crossing time slider label update
+document.getElementById('crossingTime').addEventListener('input', function() {
+  document.getElementById('crossingTimeLabel').textContent = this.value + ' hrs';
 });
 
 // Fixed-severity storm types: severity dropdown is irrelevant for these
@@ -1438,11 +1496,8 @@ function getStormDate() {
   return new Date();
 }
 
-function calculateTimeline(phases, isCenter, stormStart) {
+function calculateTimeline(phases, isCenter, stormStart, arrivalOffset) {
   if (!phases || !phases.length) return null;
-
-  // Fringe cities see precip first (storm edge arrives); center cities later
-  const arrivalOffset = isCenter ? rand(3, 8) : rand(0, 4); // hours
 
   // Total precipitation for duration calc
   const totalPrecip = phases.reduce((s, p) => s + p.amount, 0);
@@ -1513,9 +1568,36 @@ function computeAllTimelines() {
   const snowRanked = cities.map((c, i) => ({ idx: i, snow: c.snow })).sort((a, b) => b.snow - a.snow);
   const centerIndices = new Set(snowRanked.slice(0, centerCount).map(s => s.idx));
 
+  // Get storm direction and crossing time from UI
+  const dirIdx = parseInt(document.getElementById('stormDirection').value) || 0;
+  const dir = STORM_DIRECTIONS[dirIdx];
+  const crossingHrs = parseFloat(document.getElementById('crossingTime').value) || 12;
+  const vec = dir.vector; // [east, north]
+
+  // Project each city onto the storm travel axis via dot product
+  const projections = cities.map(c => {
+    const cityData = CITY_DB.find(d => d.n === c.name);
+    if (!cityData || cityData.lat == null) return 0;
+    return cityData.lon * vec[0] + cityData.lat * vec[1];
+  });
+
+  // Normalize projections to [0, 1]
+  const minProj = Math.min(...projections);
+  const maxProj = Math.max(...projections);
+  const range = maxProj - minProj || 1;
+
   cities.forEach((c, i) => {
     const isCenter = centerIndices.has(i);
-    c.timeline = calculateTimeline(c.phases || [{type:'snow', amount:c.snow}], isCenter, stormStart);
+    // Geographic arrival: 0 = first hit, crossingHrs = last hit
+    const geoProgress = (projections[i] - minProj) / range;
+    const geoOffset = geoProgress * crossingHrs;
+    // Small jitter for realism
+    const jitter = rand(-0.5, 0.5);
+    // Center cities see precip slightly after the leading edge passes
+    const centerDelay = isCenter ? rand(0.5, 1.5) : 0;
+    const arrivalOffset = Math.max(0, geoOffset + jitter + centerDelay);
+
+    c.timeline = calculateTimeline(c.phases || [{type:'snow', amount:c.snow}], isCenter, stormStart, arrivalOffset);
     c.isCenter = isCenter;
   });
 }
@@ -1675,6 +1757,19 @@ function generateRandomStorm() {
     const pad = n => String(n).padStart(2, '0');
     dateInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
+
+  // Auto-select storm direction from template's typical directions
+  const dirSelect = document.getElementById('stormDirection');
+  const typDirs = template.typicalDirections || ['SW_NE'];
+  const chosenDir = pick(typDirs);
+  const dirOptionIdx = STORM_DIRECTIONS.findIndex(d => d.code === chosenDir);
+  if (dirOptionIdx >= 0) dirSelect.value = dirOptionIdx;
+
+  // Randomize crossing time (faster for minor storms, slower for major)
+  const crossingSlider = document.getElementById('crossingTime');
+  const baseCrossing = sevIdx <= 1 ? rand(6, 14) : rand(10, 24);
+  crossingSlider.value = Math.round(baseCrossing);
+  document.getElementById('crossingTimeLabel').textContent = crossingSlider.value + ' hrs';
 
   renderCityList();
   generateProfile();
