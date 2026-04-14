@@ -88,20 +88,7 @@
   .storm-track-row label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.5; display: block; margin-bottom: 3px; }
   .storm-track-row select { padding: 8px 12px; border-radius: 8px; background: rgba(0,0,0,0.25); color: #fff; border: 1px solid rgba(255,255,255,0.2); font-size: 0.88rem; outline: none; }
   .storm-track-row select:focus { border-color: #5b9cf5; }
-  .storm-track-row .crossing-field { flex: 1; min-width: 180px; }
   .storm-track-row .help-text { font-size: 0.7rem; opacity: 0.4; margin-top: 3px; }
-  input[type="range"] {
-    -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px;
-    background: rgba(0,0,0,0.3); outline: none; margin-top: 6px;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-    background: #5b9cf5; cursor: pointer; border: none;
-  }
-  input[type="range"]::-moz-range-thumb {
-    width: 18px; height: 18px; border-radius: 50%;
-    background: #5b9cf5; cursor: pointer; border: none;
-  }
   .timeline-cell { font-size: 0.72rem; line-height: 1.6; white-space: nowrap; }
   .timeline-cell .tl-first { color: #93c5fd; }
   .timeline-cell .tl-peak { color: #fbbf24; font-weight: 600; }
@@ -335,10 +322,14 @@
         <select id="stormDirection"></select>
         <div class="help-text">Which way is the storm moving?</div>
       </div>
-      <div class="crossing-field">
-        <label for="crossingTime">Crossing time: <span id="crossingTimeLabel">12 hrs</span></label>
-        <input type="range" id="crossingTime" min="4" max="30" value="12" step="1">
-        <div class="help-text">Hours from first city hit to last</div>
+      <div>
+        <label for="stormSpeed">Storm speed</label>
+        <select id="stormSpeed">
+          <option value="slow">Slow</option>
+          <option value="medium" selected>Medium</option>
+          <option value="fast">Fast</option>
+        </select>
+        <div class="help-text">How fast the storm moves</div>
       </div>
     </div>
     <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
@@ -1462,10 +1453,8 @@ STORM_DIRECTIONS.forEach((d, i) => {
   stormDirSelect.appendChild(opt);
 });
 
-// Crossing time slider label update
-document.getElementById('crossingTime').addEventListener('input', function() {
-  document.getElementById('crossingTimeLabel').textContent = this.value + ' hrs';
-});
+// Storm speed in miles per hour
+const STORM_SPEED_MPH = { slow: 15, medium: 30, fast: 50 };
 
 // Fixed-severity storm types: severity dropdown is irrelevant for these
 const FIXED_SEVERITY_TYPES = { 'Flurry Dud': true, 'Omega Continental Blizzard Outbreak': true };
@@ -1568,29 +1557,41 @@ function computeAllTimelines() {
   const snowRanked = cities.map((c, i) => ({ idx: i, snow: c.snow })).sort((a, b) => b.snow - a.snow);
   const centerIndices = new Set(snowRanked.slice(0, centerCount).map(s => s.idx));
 
-  // Get storm direction and crossing time from UI
+  // Get storm direction and speed from UI
   const dirIdx = parseInt(document.getElementById('stormDirection').value) || 0;
   const dir = STORM_DIRECTIONS[dirIdx];
-  const crossingHrs = parseFloat(document.getElementById('crossingTime').value) || 12;
+  const speedVal = document.getElementById('stormSpeed').value || 'medium';
+  const speedMph = STORM_SPEED_MPH[speedVal] || 30;
   const vec = dir.vector; // [east, north]
 
-  // Project each city onto the storm travel axis via dot product
-  const projections = cities.map(c => {
+  // Convert each city's lat/lon to approximate miles, then project onto the storm axis.
+  // 1 degree latitude ≈ 69 miles everywhere.
+  // 1 degree longitude ≈ 69 * cos(latitude) miles.
+  // We use the average latitude of all storm cities for the longitude scaling.
+  const cityCoords = cities.map(c => {
     const cityData = CITY_DB.find(d => d.n === c.name);
-    if (!cityData || cityData.lat == null) return 0;
-    return cityData.lon * vec[0] + cityData.lat * vec[1];
+    if (!cityData || cityData.lat == null) return { lat: 0, lon: 0 };
+    return { lat: cityData.lat, lon: cityData.lon };
+  });
+  const avgLat = cityCoords.reduce((s, c) => s + c.lat, 0) / (cityCoords.length || 1);
+  const latMi = 69;                                       // miles per degree latitude
+  const lonMi = 69 * Math.cos(avgLat * Math.PI / 180);    // miles per degree longitude
+
+  // Project each city onto the storm travel axis in miles
+  const projections = cityCoords.map(c => {
+    const xMiles = c.lon * lonMi;
+    const yMiles = c.lat * latMi;
+    return xMiles * vec[0] + yMiles * vec[1];
   });
 
-  // Normalize projections to [0, 1]
   const minProj = Math.min(...projections);
-  const maxProj = Math.max(...projections);
-  const range = maxProj - minProj || 1;
 
   cities.forEach((c, i) => {
     const isCenter = centerIndices.has(i);
-    // Geographic arrival: 0 = first hit, crossingHrs = last hit
-    const geoProgress = (projections[i] - minProj) / range;
-    const geoOffset = geoProgress * crossingHrs;
+    // Distance in miles from the first city hit
+    const distMiles = projections[i] - minProj;
+    // Arrival offset = distance / speed
+    const geoOffset = distMiles / speedMph;
     // Small jitter for realism
     const jitter = rand(-0.5, 0.5);
     // Center cities see precip slightly after the leading edge passes
@@ -1765,11 +1766,9 @@ function generateRandomStorm() {
   const dirOptionIdx = STORM_DIRECTIONS.findIndex(d => d.code === chosenDir);
   if (dirOptionIdx >= 0) dirSelect.value = dirOptionIdx;
 
-  // Randomize crossing time (faster for minor storms, slower for major)
-  const crossingSlider = document.getElementById('crossingTime');
-  const baseCrossing = sevIdx <= 1 ? rand(6, 14) : rand(10, 24);
-  crossingSlider.value = Math.round(baseCrossing);
-  document.getElementById('crossingTimeLabel').textContent = crossingSlider.value + ' hrs';
+  // Set storm speed based on severity (minor = fast, major = slow)
+  const speedSelect = document.getElementById('stormSpeed');
+  speedSelect.value = sevIdx <= 1 ? 'fast' : sevIdx >= 3 ? 'slow' : 'medium';
 
   renderCityList();
   generateProfile();
